@@ -1,0 +1,29 @@
+[build-system]
+requires = [
+    "setuptools>=42",
+    "wheel",
+    "cmake>=3.10",
+    "ninja",  # Optional but recommended for faster builds
+    "scikit-build",  # Helps with CMake integration
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyrmq"
+version = "0.1.0"
+authors = [
+    {name = "Yihuai Gao", email = "yihuai@stanford.edu"},
+]
+description = "A C++ based multi-threaded ZMQ interface for Python bytes"
+dependencies = [
+    "pybind11",        # For Python bindings
+]
+[project.optional-dependencies]
+
+examples = [
+    "numpy",
+    "psutil",
+]
+[tool.setuptools]
+packages = ["pyrmq"]
+package-data = {pyrmq = ["core/*.pyi", "py/*.pyi"]}
