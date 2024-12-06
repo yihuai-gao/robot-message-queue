@@ -26,7 +26,8 @@ PYBIND11_MODULE(pyrmq, m)
         .def("pop_data", &RMQClient::pop_data)
         .def("get_last_retrieved_data", &RMQClient::get_last_retrieved_data)
         .def("reset_start_time", &RMQClient::reset_start_time)
-        .def("get_timestamp", &RMQClient::get_timestamp);
+        .def("get_timestamp", &RMQClient::get_timestamp)
+        .def("request_with_data", &RMQClient::request_with_data);
 
     py::class_<RMQServer>(m, "RMQServer")
         .def(py::init<const std::string &, const std::string &>())
@@ -36,5 +37,7 @@ PYBIND11_MODULE(pyrmq, m)
         .def("pop_data", &RMQServer::pop_data)
         .def("get_topic_status", &RMQServer::get_topic_status)
         .def("reset_start_time", &RMQServer::reset_start_time)
+        .def("wait_for_request", &RMQServer::wait_for_request)
+        .def("reply_request", &RMQServer::reply_request)
         .def("get_timestamp", &RMQServer::get_timestamp);
 }

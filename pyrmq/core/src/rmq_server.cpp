@@ -96,6 +96,46 @@ pybind11::tuple RMQServer::pop_data(const std::string &topic, std::string end_ty
     return pybind11::make_tuple(data, timestamps);
 }
 
+pybind11::tuple RMQServer::wait_for_request(const std::string &topic, double timeout)
+{
+    double start_time = get_timestamp();
+    if (timeout < 0)
+    {
+        timeout = std::numeric_limits<double>::max();
+    }
+    while (get_timestamp() - start_time < timeout)
+    {
+        std::this_thread::sleep_for(std::chrono::microseconds(100));
+        {
+            // std::lock_guard<std::mutex> lock(get_new_request_mutex_);
+            if (get_new_request_)
+            {
+                return pop_data(topic, "earliest", -1);
+            }
+        }
+    }
+    logger_->warn("Timeout when waiting for request on topic {}", topic);
+    return pybind11::make_tuple(pybind11::list(), pybind11::list());
+}
+
+void RMQServer::reply_request(const std::string &topic, const pybind11::list &data)
+{
+
+    for (const auto &item : data)
+    {
+        if (pybind11::isinstance<PyBytes>(item))
+        {
+            put_data(topic, pybind11::cast<PyBytes>(item));
+        }
+        else
+        {
+            throw std::invalid_argument("All items in the data list must be python bytes objects.");
+        }
+    }
+    // std::lock_guard<std::mutex> lock(get_new_request_mutex_);
+    get_new_request_ = false;
+}
+
 std::unordered_map<std::string, int> RMQServer::get_topic_status()
 {
     std::unordered_map<std::string, int> result;
@@ -136,6 +176,24 @@ std::vector<TimedPtr> RMQServer::peek_data_ptrs_(const std::string &topic, EndTy
         return {};
     }
     return it->second.peek_data_ptrs(end_type, n);
+}
+
+void RMQServer::add_data_ptrs_(const std::string &topic, const std::vector<TimedPtr> &data_ptrs)
+{
+    std::lock_guard<std::mutex> lock(data_topic_mutex_);
+
+    auto it = data_topics_.find(topic);
+    if (it == data_topics_.end())
+    {
+        logger_->warn("Received data for unknown topic {}. Please first call add_topic to add it into the recorded "
+                      "topics.",
+                      topic);
+        return;
+    }
+    for (const TimedPtr ptr : data_ptrs)
+    {
+        it->second.add_data_ptr(std::get<0>(ptr), std::get<1>(ptr));
+    }
 }
 
 std::vector<TimedPtr> RMQServer::pop_data_ptrs_(const std::string &topic, EndType end_type, int32_t n)
@@ -188,27 +246,30 @@ void RMQServer::process_request_(RMQMessage &message)
         break;
     }
 
-        // case CmdType::REQUEST_WITH_DATA: {
-        //     if (!request_with_data_handler_initialized_)
-        //     {
-        //         std::string error_message = "Request with data handler not initialized";
-        //         logger_->error(error_message);
-        //         RMQMessage reply(message.topic(), CmdType::ERROR, error_message, get_timestamp());
-        //         std::string reply_data = reply.serialize();
-        //         socket_.send(zmq::message_t(reply_data.data(), reply_data.size()), zmq::send_flags::none);
-        //         break;
-        //     }
-        //     else
-        //     {
-        //         RMQMessage reply(message.topic(), CmdType::REQUEST_WITH_DATA,
-        //                          request_with_data_handler_(message.data_ptr()));
-        //         std::string reply_data = reply.serialize();
-        //         socket_.send(zmq::message_t(reply_data.data(), reply_data.size()), zmq::send_flags::none);
-        //         break;
-        //     }
-        // }
-
-        // case CmdType::SYNCHRONIZE_TIME
+    case CmdType::REQUEST_WITH_DATA: {
+        {
+            add_data_ptrs_(message.topic(), message.data_ptrs());
+            {
+                // std::lock_guard<std::mutex> lock(get_new_request_mutex_);
+                get_new_request_ = true;
+            }
+            while (true)
+            {
+                // std::lock_guard<std::mutex> lock(get_new_request_mutex_);
+                if (!get_new_request_) // Wait until the request is processed by the main thread
+                {
+                    std::vector<TimedPtr> reply_ptrs = pop_data_ptrs_(message.topic(), EndType::EARLIEST, -1);
+                    RMQMessage reply(message.topic(), CmdType::REQUEST_WITH_DATA, EndType::EARLIEST, get_timestamp(),
+                                     reply_ptrs);
+                    std::string reply_data = reply.serialize();
+                    socket_.send(zmq::message_t(reply_data.data(), reply_data.size()), zmq::send_flags::none);
+                    break;
+                }
+                std::this_thread::sleep_for(std::chrono::microseconds(100));
+            }
+            break;
+        }
+    }
 
     default: {
         std::string error_message = "Received unknown command: " + std::to_string(static_cast<int>(message.cmd()));

@@ -19,18 +19,11 @@ pybind11::tuple RMQClient::peek_data(const std::string &topic, std::string end_t
     std::string data_str = int32_to_bytes(n);
     RMQMessage message(topic, CmdType::PEEK_DATA, str_to_end_type(end_type), get_timestamp(), data_str);
     std::vector<TimedPtr> reply_ptrs = send_request_(message);
-    pybind11::list data;
-    pybind11::list timestamps;
     if (reply_ptrs.empty())
     {
         logger_->debug("No data available for topic: {}", topic);
     }
-    for (const TimedPtr ptr : reply_ptrs)
-    {
-        data.append(*std::get<0>(ptr));
-        timestamps.append(std::get<1>(ptr));
-    }
-    return pybind11::make_tuple(data, timestamps);
+    return ptrs_to_tuple_(reply_ptrs);
 }
 
 pybind11::tuple RMQClient::pop_data(const std::string &topic, std::string end_type, int32_t n)
@@ -38,36 +31,48 @@ pybind11::tuple RMQClient::pop_data(const std::string &topic, std::string end_ty
     std::string data_str = int32_to_bytes(n);
     RMQMessage message(topic, CmdType::POP_DATA, str_to_end_type(end_type), get_timestamp(), data_str);
     std::vector<TimedPtr> reply_ptrs = send_request_(message);
-    pybind11::list data;
-    pybind11::list timestamps;
     if (reply_ptrs.empty())
     {
         logger_->debug("No data available for topic: {}", topic);
     }
-    for (const TimedPtr ptr : reply_ptrs)
-    {
-        data.append(*std::get<0>(ptr));
-        timestamps.append(std::get<1>(ptr));
-    }
-    return pybind11::make_tuple(data, timestamps);
+    return ptrs_to_tuple_(reply_ptrs);
 }
 
-// PyBytes RMQClient::request_with_data(const std::string &topic, const PyBytes data)
-// {
-//     TimedPtr data_ptr = std::make_shared<pybind11::bytes>(data);
-//     RMQMessage message(topic, CmdType::REQUEST_WITH_DATA, std::make_tuple(data_ptr, get_timestamp()));
-//     return *send_single_block_request_(message);
-// }
+pybind11::tuple RMQClient::request_with_data(const std::string &topic, const pybind11::list &data)
+{
+    std::vector<TimedPtr> timed_ptrs;
+    for (const auto &item : data)
+    {
+        if (pybind11::isinstance<PyBytes>(item))
+        {
+            PyBytesPtr data_ptr = std::make_shared<PyBytes>(pybind11::cast<PyBytes>(item));
+            TimedPtr timed_ptr = std::make_tuple(data_ptr, get_timestamp());
+            timed_ptrs.push_back(timed_ptr);
+        }
+        else
+        {
+            throw std::invalid_argument("All items in the list must be of type PyBytes");
+        }
+    }
+    RMQMessage message(topic, CmdType::REQUEST_WITH_DATA, EndType::EARLIEST, get_timestamp(), timed_ptrs);
+    std::vector<TimedPtr> reply_ptrs = send_request_(message);
+    if (reply_ptrs.empty())
+    {
+        logger_->error("No response from server for request with data on topic: {}", topic);
+    }
+    return ptrs_to_tuple_(reply_ptrs);
+}
 
 pybind11::tuple RMQClient::get_last_retrieved_data()
 {
-    if (last_retrieved_ptrs_.empty())
-    {
-        return pybind11::make_tuple(pybind11::list(), pybind11::list());
-    }
+    return ptrs_to_tuple_(last_retrieved_ptrs_);
+}
+
+pybind11::tuple RMQClient::ptrs_to_tuple_(const std::vector<TimedPtr> &ptrs)
+{
     pybind11::list data;
     pybind11::list timestamps;
-    for (const TimedPtr ptr : last_retrieved_ptrs_)
+    for (const TimedPtr ptr : ptrs)
     {
         data.append(*std::get<0>(ptr));
         timestamps.append(std::get<1>(ptr));
@@ -87,31 +92,6 @@ void RMQClient::reset_start_time(int64_t system_time_us)
     steady_clock_start_time_us_ = steady_clock_us() + (system_time_us - system_clock_us());
 }
 
-// TimedPtr RMQClient::send_single_block_request_(const RMQMessage &message)
-// {
-//     std::string serialized = message.serialize();
-//     zmq::message_t request(serialized.data(), serialized.size());
-//     socket_.send(request, zmq::send_flags::none);
-//     zmq::message_t reply;
-//     socket_.recv(reply);
-//     RMQMessage reply_message(std::string(reply.data<char>(), reply.data<char>() + reply.size()), get_timestamp());
-//     if (reply_message.cmd() == CmdType::ERROR)
-//     {
-//         throw std::runtime_error("Server returned error: " + reply_message.data_str());
-//     }
-//     if (reply_message.cmd() != message.cmd())
-//     {
-//         throw std::runtime_error("Command type mismatch. Sent " + std::to_string(static_cast<int>(message.cmd())) +
-//                                  " but received " + std::to_string(static_cast<int>(reply_message.cmd())));
-//     }
-//     if (reply_message.cmd() == CmdType::GET_LATEST_DATA || reply_message.cmd() == CmdType::REQUEST_WITH_DATA)
-//     {
-//         last_retrieved_ptrs_ = {reply_message.data_ptr()};
-//         return reply_message.data_ptr();
-//     }
-//     throw std::runtime_error("Invalid command type: " + std::to_string(static_cast<int>(reply_message.cmd())));
-// }
-
 std::vector<TimedPtr> RMQClient::send_request_(RMQMessage &message)
 {
     std::vector<TimedPtr> reply_ptrs;
@@ -130,7 +110,8 @@ std::vector<TimedPtr> RMQClient::send_request_(RMQMessage &message)
         throw std::runtime_error("Command type mismatch. Sent " + std::to_string(static_cast<int>(message.cmd())) +
                                  " but received " + std::to_string(static_cast<int>(reply_message.cmd())));
     }
-    if (reply_message.cmd() == CmdType::PEEK_DATA || reply_message.cmd() == CmdType::POP_DATA)
+    if (reply_message.cmd() == CmdType::PEEK_DATA || reply_message.cmd() == CmdType::POP_DATA ||
+        reply_message.cmd() == CmdType::REQUEST_WITH_DATA)
     {
         last_retrieved_ptrs_ = reply_message.data_ptrs();
         return reply_message.data_ptrs();
