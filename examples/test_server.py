@@ -1,4 +1,4 @@
-from pyrmq import RMQServer
+from robotmq import RMQServer
 import time
 import numpy as np
 import numpy.typing as npt

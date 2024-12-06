@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(pyrmq)
+project(robotmq)
 
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 17)
@@ -23,20 +23,20 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 # Add source files with new directory structure
 set(SOURCES
-    pyrmq/core/src/rmq_client.cpp
-    pyrmq/core/src/rmq_message.cpp
-    pyrmq/core/src/rmq_server.cpp
-    pyrmq/core/src/data_topic.cpp
-    pyrmq/core/src/common.cpp
-    pyrmq/core/src/pybind.cpp
+    robotmq/core/src/rmq_client.cpp
+    robotmq/core/src/rmq_message.cpp
+    robotmq/core/src/rmq_server.cpp
+    robotmq/core/src/data_topic.cpp
+    robotmq/core/src/common.cpp
+    robotmq/core/src/pybind.cpp
 )
 
 # Create the pybind11 module with the new target name
-pybind11_add_module(pyrmq_core ${SOURCES})
+pybind11_add_module(robotmq_core ${SOURCES})
 
 add_compile_options(-pthread)
 
-target_link_libraries(pyrmq_core PRIVATE
+target_link_libraries(robotmq_core PRIVATE
     libzmq
     spdlog::spdlog
     Threads::Threads
@@ -44,14 +44,14 @@ target_link_libraries(pyrmq_core PRIVATE
 )
 
 # Update include directories for new structure
-target_include_directories(pyrmq_core PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/pyrmq/core/include
+target_include_directories(robotmq_core PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/robotmq/core/include
 )
 
 
 # Update the output location and name
-set_target_properties(pyrmq_core PROPERTIES 
-    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/pyrmq/core"
+set_target_properties(robotmq_core PROPERTIES 
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/robotmq/core"
     PREFIX ""
-    OUTPUT_NAME "pyrmq"
+    OUTPUT_NAME "robotmq"
 )

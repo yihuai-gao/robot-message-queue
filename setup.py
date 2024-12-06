@@ -73,7 +73,7 @@ class CMakeBuild(build_ext):
         )
 
 setup(
-    name="pyrmq",
+    name="robotmq",
     version="0.1.0",
     author="Yihuai Gao",
     author_email="yihuai@stanford.edu",
@@ -81,9 +81,9 @@ setup(
     long_description="",
     packages=find_packages(),
     package_data={
-        "pyrmq": ["core/*.pyi", "py/*.pyi"],
+        "robotmq": ["core/*.pyi", "py/*.pyi"],
     },
-    ext_modules=[CMakeExtension("pyrmq.core.pyrmq")],
+    ext_modules=[CMakeExtension("robotmq.core.robotmq")],
     cmdclass={"build_ext": CMakeBuild},
     zip_safe=False,
 )

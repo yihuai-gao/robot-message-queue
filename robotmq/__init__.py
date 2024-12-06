@@ -1,4 +1,4 @@
-from .core.pyrmq import (
+from .core.robotmq import (
     RMQClient,
     RMQServer,
     steady_clock_us,

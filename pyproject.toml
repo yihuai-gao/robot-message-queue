@@ -9,7 +9,7 @@ requires = [
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pyrmq"
+name = "robotmq"
 version = "0.1.0"
 authors = [
     {name = "Yihuai Gao", email = "yihuai@stanford.edu"},
@@ -25,5 +25,5 @@ examples = [
     "psutil",
 ]
 [tool.setuptools]
-packages = ["pyrmq"]
-package-data = {pyrmq = ["core/*.pyi", "py/*.pyi"]}
+packages = ["robotmq"]
+package-data = {robotmq = ["core/*.pyi", "py/*.pyi"]}

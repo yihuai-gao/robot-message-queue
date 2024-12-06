@@ -1,4 +1,4 @@
-import pyrmq as zi
+import robotmq as rmq
 import pickle
 import time
 import numpy as np
@@ -6,8 +6,8 @@ import numpy.typing as npt
 
 
 def test_communication():
-    server = zi.RMQServer("test_rmq_server", "ipc:///tmp/feeds/0")
-    client = zi.RMQClient("test_rmq_client", "ipc:///tmp/feeds/0")
+    server = rmq.RMQServer("test_rmq_server", "ipc:///tmp/feeds/0")
+    client = rmq.RMQClient("test_rmq_client", "ipc:///tmp/feeds/0")
     print("Server and client created")
 
     server.add_topic("test", 10)

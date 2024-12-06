@@ -1,9 +1,9 @@
-import pyrmq
+import robotmq
 import numpy as np
 import numpy.typing as npt
 
 def test_reply_request():
-    server = pyrmq.RMQServer("test_server", "tcp://*:5555")
+    server = robotmq.RMQServer("test_server", "tcp://*:5555")
     server.add_topic("test_topic", 10.0)
     while True:
         try:

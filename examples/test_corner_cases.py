@@ -1,12 +1,12 @@
-import pyrmq as zi
+import robotmq as rmq
 import time
 import pickle
 import numpy as np
 
 
 def test_corner_cases():
-    server = zi.RMQServer("test_rmq_server", "ipc:///tmp/feeds/0")
-    client = zi.RMQClient("test_rmq_client", "ipc:///tmp/feeds/0")
+    server = rmq.RMQServer("test_rmq_server", "ipc:///tmp/feeds/0")
+    client = rmq.RMQClient("test_rmq_client", "ipc:///tmp/feeds/0")
 
     print("Server and client created")
     server.add_topic("test", 10)

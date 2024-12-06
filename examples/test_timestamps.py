@@ -1,5 +1,5 @@
 from difflib import restore
-import pyrmq as zi
+import robotmq as rmq
 import time
 import pickle
 import numpy as np
@@ -14,14 +14,14 @@ def get_memory_usage():
 
 
 def test_timestamps():
-    server = zi.RMQServer("test_rmq_server", "ipc:///tmp/feeds/0")
-    client = zi.RMQClient("test_rmq_client", "ipc:///tmp/feeds/0")
+    server = rmq.RMQServer("test_rmq_server", "ipc:///tmp/feeds/0")
+    client = rmq.RMQClient("test_rmq_client", "ipc:///tmp/feeds/0")
     print("Server and client created")
 
     topic_name = "test"
     server.add_topic(topic_name, 1.0)
 
-    current_system_time = zi.system_clock_us()
+    current_system_time = rmq.system_clock_us()
 
     # Manually sync the start time of the server and client
     server.reset_start_time(current_system_time)
