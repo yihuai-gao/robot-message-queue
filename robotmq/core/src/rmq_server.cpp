@@ -107,9 +107,10 @@ pybind11::tuple RMQServer::wait_for_request(const std::string &topic, double tim
     {
         std::this_thread::sleep_for(std::chrono::microseconds(100));
         {
-            // std::lock_guard<std::mutex> lock(get_new_request_mutex_);
+            std::lock_guard<std::mutex> lock(get_new_request_mutex_);
             if (get_new_request_)
             {
+                get_new_request_ = false;
                 return pop_data(topic, "earliest", -1);
             }
         }
@@ -132,8 +133,10 @@ void RMQServer::reply_request(const std::string &topic, const pybind11::list &da
             throw std::invalid_argument("All items in the data list must be python bytes objects.");
         }
     }
-    // std::lock_guard<std::mutex> lock(get_new_request_mutex_);
-    get_new_request_ = false;
+    {
+        std::lock_guard<std::mutex> lock(reply_ready_mutex_);
+        reply_ready_ = true;
+    }
 }
 
 std::unordered_map<std::string, int> RMQServer::get_topic_status()
@@ -250,20 +253,24 @@ void RMQServer::process_request_(RMQMessage &message)
         {
             add_data_ptrs_(message.topic(), message.data_ptrs());
             {
-                // std::lock_guard<std::mutex> lock(get_new_request_mutex_);
+                std::lock_guard<std::mutex> lock(get_new_request_mutex_);
                 get_new_request_ = true;
             }
             while (true)
             {
-                // std::lock_guard<std::mutex> lock(get_new_request_mutex_);
-                if (!get_new_request_) // Wait until the request is processed by the main thread
                 {
-                    std::vector<TimedPtr> reply_ptrs = pop_data_ptrs_(message.topic(), EndType::EARLIEST, -1);
-                    RMQMessage reply(message.topic(), CmdType::REQUEST_WITH_DATA, EndType::EARLIEST, get_timestamp(),
-                                     reply_ptrs);
-                    std::string reply_data = reply.serialize();
-                    socket_.send(zmq::message_t(reply_data.data(), reply_data.size()), zmq::send_flags::none);
-                    break;
+                    std::lock_guard<std::mutex> lock(reply_ready_mutex_);
+                    if (reply_ready_) // Wait until the request is processed by the main thread
+                    {
+
+                        std::vector<TimedPtr> reply_ptrs = pop_data_ptrs_(message.topic(), EndType::EARLIEST, -1);
+                        RMQMessage reply(message.topic(), CmdType::REQUEST_WITH_DATA, EndType::EARLIEST,
+                                         get_timestamp(), reply_ptrs);
+                        std::string reply_data = reply.serialize();
+                        socket_.send(zmq::message_t(reply_data.data(), reply_data.size()), zmq::send_flags::none);
+                        reply_ready_ = false;
+                        break;
+                    }
                 }
                 std::this_thread::sleep_for(std::chrono::microseconds(100));
             }

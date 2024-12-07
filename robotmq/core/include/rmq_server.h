@@ -42,6 +42,8 @@ class RMQServer
     std::mutex data_topic_mutex_;
     bool get_new_request_ = false;
     std::mutex get_new_request_mutex_;
+    bool reply_ready_ = false;
+    std::mutex reply_ready_mutex_;
 
     std::unordered_map<std::string, DataTopic> data_topics_;
     std::shared_ptr<spdlog::logger> logger_;
