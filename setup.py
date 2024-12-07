@@ -1,3 +1,10 @@
+"""
+ Copyright (c) 2024 Yihuai Gao
+ 
+ This software is released under the MIT License.
+ https://opensource.org/licenses/MIT
+"""
+
 from setuptools import setup, Extension, find_packages
 from setuptools.command.build_ext import build_ext
 import sys

@@ -1,3 +1,10 @@
+/**
+ * Copyright (c) 2024 Yihuai Gao
+ * 
+ * This software is released under the MIT License.
+ * https://opensource.org/licenses/MIT
+ */
+
 #include "data_topic.h"
 
 DataTopic::DataTopic(const std::string &topic_name, double max_remaining_time)

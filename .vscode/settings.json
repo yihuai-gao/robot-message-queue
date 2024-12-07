@@ -77,4 +77,7 @@
         "codecvt": "cpp"
     },
     "python.languageServer": "None",
+    "licenser.useSingleLineStyle": false,
+    "licenser.projectName": "robotmq",
+    "licenser.license": "MIT",
 }

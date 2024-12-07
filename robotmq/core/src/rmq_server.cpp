@@ -1,3 +1,10 @@
+/**
+ * Copyright (c) 2024 Yihuai Gao
+ * 
+ * This software is released under the MIT License.
+ * https://opensource.org/licenses/MIT
+ */
+
 
 #include "rmq_server.h"
 #include <filesystem>

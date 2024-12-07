@@ -1,3 +1,8 @@
+// Copyright (c) 2024 Yihuai Gao
+// 
+// This software is released under the MIT License.
+// https://opensource.org/licenses/MIT
+
 cmake_minimum_required(VERSION 3.10)
 project(robotmq)
 

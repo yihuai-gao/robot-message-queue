@@ -1,3 +1,10 @@
+/**
+ * Copyright (c) 2024 Yihuai Gao
+ * 
+ * This software is released under the MIT License.
+ * https://opensource.org/licenses/MIT
+ */
+
 #include "rmq_client.h"
 
 RMQClient::RMQClient(const std::string &client_name, const std::string &server_endpoint)

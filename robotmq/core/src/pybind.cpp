@@ -1,3 +1,10 @@
+/**
+ * Copyright (c) 2024 Yihuai Gao
+ * 
+ * This software is released under the MIT License.
+ * https://opensource.org/licenses/MIT
+ */
+
 #include "common.h"
 #include "data_topic.h"
 #include "rmq_client.h"

@@ -1,3 +1,10 @@
+"""
+ Copyright (c) 2024 Yihuai Gao
+ 
+ This software is released under the MIT License.
+ https://opensource.org/licenses/MIT
+"""
+
 import robotmq
 import numpy as np
 import numpy.typing as npt
