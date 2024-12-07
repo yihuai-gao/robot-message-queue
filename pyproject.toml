@@ -1,8 +1,3 @@
-// Copyright (c) 2024 Yihuai Gao
-// 
-// This software is released under the MIT License.
-// https://opensource.org/licenses/MIT
-
 [build-system]
 requires = [
     "setuptools>=42",
@@ -19,12 +14,18 @@ version = "0.1.0"
 authors = [
     {name = "Yihuai Gao", email = "yihuai@stanford.edu"},
 ]
-description = "A C++ based multi-threaded ZMQ interface for Python bytes"
+description = "A light-weight and flexible Robot-centric Message Queue for Python applications"
 dependencies = [
     "pybind11",        # For Python bindings
 ]
-[project.optional-dependencies]
 
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent"
+]
+
+[project.optional-dependencies]
 examples = [
     "numpy",
     "psutil",

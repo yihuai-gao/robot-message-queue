@@ -80,16 +80,6 @@ class CMakeBuild(build_ext):
         )
 
 setup(
-    name="robotmq",
-    version="0.1.0",
-    author="Yihuai Gao",
-    author_email="yihuai@stanford.edu",
-    description="A C++ based multi-threaded ZMQ interface for Python bytes",
-    long_description="",
-    packages=find_packages(),
-    package_data={
-        "robotmq": ["core/*.pyi", "py/*.pyi"],
-    },
     ext_modules=[CMakeExtension("robotmq.core.robotmq")],
     cmdclass={"build_ext": CMakeBuild},
     zip_safe=False,

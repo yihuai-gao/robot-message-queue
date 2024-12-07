@@ -3,3 +3,4 @@ build
 *.cpython*.so
 pyrightconfig.json
 __pycache__
+dist
