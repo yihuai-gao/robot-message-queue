@@ -30,7 +30,10 @@ class CMakeBuild(build_ext):
 
     def build_extension(self, ext):
         extdir = os.path.abspath(os.path.dirname(self.get_ext_fullpath(ext.name)))
-
+        
+        # Get the directory containing setup.py
+        source_dir = os.path.dirname(os.path.abspath(__file__))
+        
         cmake_args = [
             f"-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={extdir}",
             f"-DPYTHON_EXECUTABLE={sys.executable}",
@@ -46,37 +49,24 @@ class CMakeBuild(build_ext):
 
         cfg = "Debug" if self.debug else "Release"
         build_args = ["--config", cfg]
-
         cmake_args += [f"-DCMAKE_BUILD_TYPE={cfg}"]
         # if platform.system() == "Windows":
         #     build_args += ["--", "/m"]
         # else:
         build_args += ["--", "-j"]
-
+        
+        build_temp = os.path.join(self.build_temp, ext.name)
+        if not os.path.exists(build_temp):
+            os.makedirs(build_temp)
+        # Define env before subprocess calls
         env = os.environ.copy()
-        env["CXXFLAGS"] = (
-            f'{env.get("CXXFLAGS", "")} -DVERSION_INFO=\\"{self.distribution.get_version()}\\"'
-        )
 
-        if not os.path.exists(self.build_temp):
-            os.makedirs(self.build_temp)
-
-        # Find dependencies from pip-installed packages
-        import sysconfig
-        python_include = sysconfig.get_path('include')
-        site_packages = sysconfig.get_path('purelib')
-
-        # Add pip-installed include directories
-        cmake_args += [
-            f"-DCMAKE_PREFIX_PATH={site_packages}",
-            f"-DPYTHON_INCLUDE_DIR={python_include}",
-        ]
-
+        # Use source_dir instead of ext.sourcedir
         subprocess.check_call(
-            ["cmake", ext.sourcedir] + cmake_args, cwd=self.build_temp, env=env
+            ["cmake", source_dir] + cmake_args, cwd=build_temp, env=env
         )
         subprocess.check_call(
-            ["cmake", "--build", "."] + build_args, cwd=self.build_temp
+            ["cmake", "--build", "."] + build_args, cwd=build_temp
         )
 
 setup(

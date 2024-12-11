@@ -32,4 +32,4 @@ examples = [
 ]
 [tool.setuptools]
 packages = ["robotmq"]
-package-data = {robotmq = ["core/*.pyi", "py/*.pyi"]}
+package-data = {robotmq = ["core/*.pyi", "py/*.pyi", "core/include/*", "core/src/*"]}
