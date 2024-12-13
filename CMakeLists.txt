@@ -11,6 +11,11 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+if(DEFINED ENV{CONDA_PREFIX})
+    set(Python_ROOT_DIR $ENV{CONDA_PREFIX})
+    set(Python_EXECUTABLE $ENV{CONDA_PREFIX}/bin/python)
+endif()
+
 find_package(Python COMPONENTS Interpreter Development REQUIRED)
 find_package(pybind11 CONFIG REQUIRED)
 find_package(ZeroMQ REQUIRED)
@@ -60,3 +65,5 @@ set_target_properties(robotmq_core PROPERTIES
     PREFIX ""
     OUTPUT_NAME "robotmq"
 )
+
+message(STATUS "Python_EXECUTABLE: ${Python_EXECUTABLE}")
