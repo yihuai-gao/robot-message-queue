@@ -1,6 +1,6 @@
 /**
  * Copyright (c) 2024 Yihuai Gao
- * 
+ *
  * This software is released under the MIT License.
  * https://opensource.org/licenses/MIT
  */
@@ -9,8 +9,13 @@
 
 RMQClient::RMQClient(const std::string &client_name, const std::string &server_endpoint)
     : context_(1), socket_(context_, zmq::socket_type::req), steady_clock_start_time_us_(steady_clock_us()),
-      last_retrieved_ptrs_(), logger_(spdlog::stdout_color_mt(client_name))
+      last_retrieved_ptrs_()
 {
+    logger_ = spdlog::get(client_name);
+    if (!logger_)
+    {
+        logger_ = spdlog::stdout_color_mt(client_name);
+    }
     logger_->set_pattern("[%H:%M:%S %n %^%l%$] %v");
     socket_.connect(server_endpoint);
 }

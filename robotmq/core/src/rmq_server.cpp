@@ -1,20 +1,23 @@
 /**
  * Copyright (c) 2024 Yihuai Gao
- * 
+ *
  * This software is released under the MIT License.
  * https://opensource.org/licenses/MIT
  */
 
-
 #include "rmq_server.h"
 #include <filesystem>
 #include <spdlog/sinks/stdout_color_sinks.h>
-
+#include <spdlog/spdlog.h>
 RMQServer::RMQServer(const std::string &server_name, const std::string &server_endpoint)
-    : server_name_(server_name), context_(1), socket_(context_, zmq::socket_type::rep),
-      logger_(spdlog::stdout_color_mt(server_name)), running_(false), steady_clock_start_time_us_(steady_clock_us()),
-      poller_timeout_ms_(1000)
+    : server_name_(server_name), context_(1), socket_(context_, zmq::socket_type::rep), running_(false),
+      steady_clock_start_time_us_(steady_clock_us()), poller_timeout_ms_(1000)
 {
+    logger_ = spdlog::get(server_name);
+    if (!logger_)
+    {
+        logger_ = spdlog::stdout_color_mt(server_name);
+    }
     logger_->set_pattern("[%H:%M:%S %n %^%l%$] %v");
 
     // Only accept tcp and ipc endpoints

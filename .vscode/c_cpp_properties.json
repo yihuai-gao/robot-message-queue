@@ -5,6 +5,7 @@
             "includePath": [
                 "${workspaceFolder}/**",
                 "${workspaceFolder}/include",
+                "${HOME}/miniforge3/envs/teleop-utils/include"
             ],
             "defines": [],
             "compilerPath": "/usr/bin/gcc",

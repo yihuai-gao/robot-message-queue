@@ -74,7 +74,10 @@
         "set": "cpp",
         "valarray": "cpp",
         "variant": "cpp",
-        "codecvt": "cpp"
+        "codecvt": "cpp",
+        "filesystem": "cpp",
+        "bitset": "cpp",
+        "span": "cpp"
     },
     "licenser.useSingleLineStyle": false,
     "licenser.projectName": "robotmq",
