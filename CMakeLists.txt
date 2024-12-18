@@ -62,8 +62,20 @@ target_include_directories(robotmq_core PRIVATE
 # Update the output location and name
 set_target_properties(robotmq_core PROPERTIES 
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/robotmq/core"
-    PREFIX ""
-    OUTPUT_NAME "robotmq"
 )
+
+# Add this to ensure the wheel is built with the correct ABI flags
+if(DEFINED ENV{CONDA_PREFIX})
+    set(PYTHON_ABI ".cp${Python_VERSION_MAJOR}${Python_VERSION_MINOR}-cp${Python_VERSION_MAJOR}${Python_VERSION_MINOR}")
+else()
+    execute_process(
+        COMMAND ${Python_EXECUTABLE} -c "import sysconfig; print(sysconfig.get_config_var('SOABI'))"
+        OUTPUT_VARIABLE PYTHON_ABI
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+endif()
+
+# set_target_properties(robotmq_core PROPERTIES SUFFIX "${PYTHON_ABI}${CMAKE_SHARED_LIBRARY_SUFFIX}")
+
 
 message(STATUS "Python_EXECUTABLE: ${Python_EXECUTABLE}")

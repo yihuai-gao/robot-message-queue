@@ -12,17 +12,18 @@ import numpy.typing as npt
 
 
 def test_server():
-    server = RMQServer("test_rmq_server", "tcp://0.0.0.0:5555")
+    server = RMQServer("asynchronous_server", "tcp://0.0.0.0:5555")
     print("Server created")
 
     server.add_topic("test", 10)
 
     data_cnt = 0
+    rand_data_lens = [10000, 100000, 1000000, 10000000]
     while True:
-        rand_data = np.random.rand(100000)
+        rand_data = np.random.rand(rand_data_lens[data_cnt % 4])
         # Simulates a data source that keeps getting data from the sensor at a regular interval
         server.put_data("test", rand_data.tobytes())
-        time.sleep(0.1)
+        time.sleep(1)
         data_cnt += 1
         topic_len = server.get_topic_status()["test"]
         print(

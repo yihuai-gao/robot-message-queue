@@ -1,6 +1,6 @@
 /**
  * Copyright (c) 2024 Yihuai Gao
- * 
+ *
  * This software is released under the MIT License.
  * https://opensource.org/licenses/MIT
  */
@@ -21,30 +21,30 @@ PyBytesPtr bytes_to_shared_string(py::bytes py_bytes)
     return std::make_shared<py::bytes>(py_bytes);
 }
 
-PYBIND11_MODULE(robotmq, m)
+PYBIND11_MODULE(robotmq_core, m)
 {
 
     m.def("steady_clock_us", &steady_clock_us);
     m.def("system_clock_us", &system_clock_us);
 
     py::class_<RMQClient>(m, "RMQClient")
-        .def(py::init<const std::string &, const std::string &>())
-        .def("peek_data", &RMQClient::peek_data)
-        .def("pop_data", &RMQClient::pop_data)
+        .def(py::init<const std::string &, const std::string &>(), py::arg("client_name"), py::arg("server_endpoint"))
+        .def("peek_data", &RMQClient::peek_data, py::arg("topic"), py::arg("order"), py::arg("n"))
+        .def("pop_data", &RMQClient::pop_data, py::arg("topic"), py::arg("order"), py::arg("n"))
         .def("get_last_retrieved_data", &RMQClient::get_last_retrieved_data)
-        .def("reset_start_time", &RMQClient::reset_start_time)
+        .def("reset_start_time", &RMQClient::reset_start_time, py::arg("system_time_us"))
         .def("get_timestamp", &RMQClient::get_timestamp)
-        .def("request_with_data", &RMQClient::request_with_data);
+        .def("request_with_data", &RMQClient::request_with_data, py::arg("topic"), py::arg("data"));
 
     py::class_<RMQServer>(m, "RMQServer")
-        .def(py::init<const std::string &, const std::string &>())
-        .def("add_topic", &RMQServer::add_topic)
-        .def("put_data", &RMQServer::put_data)
-        .def("peek_data", &RMQServer::peek_data)
-        .def("pop_data", &RMQServer::pop_data)
+        .def(py::init<const std::string &, const std::string &>(), py::arg("server_name"), py::arg("server_endpoint"))
+        .def("add_topic", &RMQServer::add_topic, py::arg("topic"), py::arg("max_remaining_time"))
+        .def("put_data", &RMQServer::put_data, py::arg("topic"), py::arg("data"))
+        .def("peek_data", &RMQServer::peek_data, py::arg("topic"), py::arg("order"), py::arg("n"))
+        .def("pop_data", &RMQServer::pop_data, py::arg("topic"), py::arg("order"), py::arg("n"))
         .def("get_topic_status", &RMQServer::get_topic_status)
-        .def("reset_start_time", &RMQServer::reset_start_time)
-        .def("wait_for_request", &RMQServer::wait_for_request)
-        .def("reply_request", &RMQServer::reply_request)
+        .def("reset_start_time", &RMQServer::reset_start_time, py::arg("system_time_us"))
+        .def("wait_for_request", &RMQServer::wait_for_request, py::arg("topic"), py::arg("timeout"))
+        .def("reply_request", &RMQServer::reply_request, py::arg("topic"), py::arg("data"))
         .def("get_timestamp", &RMQServer::get_timestamp);
 }

@@ -5,7 +5,7 @@
  https://opensource.org/licenses/MIT
 """
 
-from .core.robotmq import (
+from .core.robotmq_core import (
     RMQClient,
     RMQServer,
     steady_clock_us,

@@ -12,12 +12,12 @@ import numpy.typing as npt
 
 
 def test_client():
-    client = RMQClient("test_rmq_client", "tcp://localhost:5555")
+    client = RMQClient("asynchronous_client", "tcp://localhost:5555")
     print("Client created")
 
     while True:
         start_time = time.time()
-        raw_data_list, timestamps = client.peek_data("test", "latest", 1)
+        raw_data_list, timestamps = client.pop_data("test", "earliest", 1)
         end_peeking_time = time.time()
 
         if raw_data_list:
