@@ -26,10 +26,10 @@ RMQClient::~RMQClient()
     context_.close();
 }
 
-pybind11::tuple RMQClient::peek_data(const std::string &topic, std::string end_type, int32_t n)
+pybind11::tuple RMQClient::peek_data(const std::string &topic, std::string order, int32_t n)
 {
     std::string data_str = int32_to_bytes(n);
-    RMQMessage message(topic, CmdType::PEEK_DATA, str_to_end_type(end_type), get_timestamp(), data_str);
+    RMQMessage message(topic, CmdType::PEEK_DATA, str_to_order(order), get_timestamp(), data_str);
     std::vector<TimedPtr> reply_ptrs = send_request_(message);
     if (reply_ptrs.empty())
     {
@@ -38,10 +38,10 @@ pybind11::tuple RMQClient::peek_data(const std::string &topic, std::string end_t
     return ptrs_to_tuple_(reply_ptrs);
 }
 
-pybind11::tuple RMQClient::pop_data(const std::string &topic, std::string end_type, int32_t n)
+pybind11::tuple RMQClient::pop_data(const std::string &topic, std::string order, int32_t n)
 {
     std::string data_str = int32_to_bytes(n);
-    RMQMessage message(topic, CmdType::POP_DATA, str_to_end_type(end_type), get_timestamp(), data_str);
+    RMQMessage message(topic, CmdType::POP_DATA, str_to_order(order), get_timestamp(), data_str);
     std::vector<TimedPtr> reply_ptrs = send_request_(message);
     if (reply_ptrs.empty())
     {
@@ -66,7 +66,7 @@ pybind11::tuple RMQClient::request_with_data(const std::string &topic, const pyb
             throw std::invalid_argument("All items in the list must be of type PyBytes");
         }
     }
-    RMQMessage message(topic, CmdType::REQUEST_WITH_DATA, EndType::EARLIEST, get_timestamp(), timed_ptrs);
+    RMQMessage message(topic, CmdType::REQUEST_WITH_DATA, Order::EARLIEST, get_timestamp(), timed_ptrs);
     std::vector<TimedPtr> reply_ptrs = send_request_(message);
     if (reply_ptrs.empty())
     {

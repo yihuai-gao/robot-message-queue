@@ -1,6 +1,6 @@
 /**
  * Copyright (c) 2024 Yihuai Gao
- * 
+ *
  * This software is released under the MIT License.
  * https://opensource.org/licenses/MIT
  */
@@ -17,8 +17,8 @@ class DataTopic
 
     void add_data_ptr(const PyBytesPtr data_ptr, double timestamp);
 
-    std::vector<TimedPtr> peek_data_ptrs(EndType end_type, int32_t n);
-    std::vector<TimedPtr> pop_data_ptrs(EndType end_type, int32_t n);
+    std::vector<TimedPtr> peek_data_ptrs(Order order, int32_t n);
+    std::vector<TimedPtr> pop_data_ptrs(Order order, int32_t n);
 
     void clear_data();
     int size() const;

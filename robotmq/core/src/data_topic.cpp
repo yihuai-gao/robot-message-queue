@@ -22,7 +22,7 @@ void DataTopic::add_data_ptr(const PyBytesPtr data_ptr, double timestamp)
     }
 }
 
-std::vector<TimedPtr> DataTopic::peek_data_ptrs(EndType end_type, int32_t n)
+std::vector<TimedPtr> DataTopic::peek_data_ptrs(Order order, int32_t n)
 {
     if (data_.empty())
     {
@@ -32,13 +32,13 @@ std::vector<TimedPtr> DataTopic::peek_data_ptrs(EndType end_type, int32_t n)
     {
         n = data_.size();
     }
-    if (end_type == EndType::LATEST)
+    if (order == Order::LATEST)
     {
         std::vector<TimedPtr> result(data_.end() - n, data_.end());
         std::reverse(result.begin(), result.end());
         return result;
     }
-    else if (end_type == EndType::EARLIEST)
+    else if (order == Order::EARLIEST)
     {
         return std::vector<TimedPtr>(data_.begin(), data_.begin() + n);
     }
@@ -48,7 +48,7 @@ std::vector<TimedPtr> DataTopic::peek_data_ptrs(EndType end_type, int32_t n)
     }
 }
 
-std::vector<TimedPtr> DataTopic::pop_data_ptrs(EndType end_type, int32_t n)
+std::vector<TimedPtr> DataTopic::pop_data_ptrs(Order order, int32_t n)
 {
     if (data_.empty())
     {
@@ -58,16 +58,16 @@ std::vector<TimedPtr> DataTopic::pop_data_ptrs(EndType end_type, int32_t n)
     {
         n = data_.size();
     }
-    std::vector<TimedPtr> ret = peek_data_ptrs(end_type, n);
+    std::vector<TimedPtr> ret = peek_data_ptrs(order, n);
 
-    if (end_type == EndType::LATEST)
+    if (order == Order::LATEST)
     {
         for (int i = 0; i < n; i++)
         {
             data_.pop_back();
         }
     }
-    else if (end_type == EndType::EARLIEST)
+    else if (order == Order::EARLIEST)
     {
         for (int i = 0; i < n; i++)
         {

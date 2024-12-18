@@ -78,10 +78,10 @@ void RMQServer::put_data(const std::string &topic, const PyBytes &data)
     it->second.add_data_ptr(data_ptr, get_timestamp());
 }
 
-pybind11::tuple RMQServer::peek_data(const std::string &topic, std::string end_type_str, int n)
+pybind11::tuple RMQServer::peek_data(const std::string &topic, std::string order_str, int n)
 {
-    EndType end_type = str_to_end_type(end_type_str);
-    std::vector<TimedPtr> ptrs = peek_data_ptrs_(topic, end_type, n);
+    Order order = str_to_order(order_str);
+    std::vector<TimedPtr> ptrs = peek_data_ptrs_(topic, order, n);
     pybind11::list data;
     pybind11::list timestamps;
     for (const TimedPtr ptr : ptrs)
@@ -92,10 +92,10 @@ pybind11::tuple RMQServer::peek_data(const std::string &topic, std::string end_t
     return pybind11::make_tuple(data, timestamps);
 }
 
-pybind11::tuple RMQServer::pop_data(const std::string &topic, std::string end_type_str, int n)
+pybind11::tuple RMQServer::pop_data(const std::string &topic, std::string order_str, int n)
 {
-    EndType end_type = str_to_end_type(end_type_str);
-    std::vector<TimedPtr> ptrs = pop_data_ptrs_(topic, end_type, n);
+    Order order = str_to_order(order_str);
+    std::vector<TimedPtr> ptrs = pop_data_ptrs_(topic, order, n);
     pybind11::list data;
     pybind11::list timestamps;
     for (const TimedPtr ptr : ptrs)
@@ -177,7 +177,7 @@ void RMQServer::reset_start_time(int64_t system_time_us)
     steady_clock_start_time_us_ = steady_clock_us() + (system_time_us - system_clock_us());
 }
 
-std::vector<TimedPtr> RMQServer::peek_data_ptrs_(const std::string &topic, EndType end_type, int32_t n)
+std::vector<TimedPtr> RMQServer::peek_data_ptrs_(const std::string &topic, Order order, int32_t n)
 {
     std::lock_guard<std::mutex> lock(data_topic_mutex_);
     auto it = data_topics_.find(topic);
@@ -188,7 +188,7 @@ std::vector<TimedPtr> RMQServer::peek_data_ptrs_(const std::string &topic, EndTy
                       topic);
         return {};
     }
-    return it->second.peek_data_ptrs(end_type, n);
+    return it->second.peek_data_ptrs(order, n);
 }
 
 void RMQServer::add_data_ptrs_(const std::string &topic, const std::vector<TimedPtr> &data_ptrs)
@@ -209,7 +209,7 @@ void RMQServer::add_data_ptrs_(const std::string &topic, const std::vector<Timed
     }
 }
 
-std::vector<TimedPtr> RMQServer::pop_data_ptrs_(const std::string &topic, EndType end_type, int32_t n)
+std::vector<TimedPtr> RMQServer::pop_data_ptrs_(const std::string &topic, Order order, int32_t n)
 {
     std::lock_guard<std::mutex> lock(data_topic_mutex_);
     auto it = data_topics_.find(topic);
@@ -220,7 +220,7 @@ std::vector<TimedPtr> RMQServer::pop_data_ptrs_(const std::string &topic, EndTyp
                       topic);
         return {};
     }
-    return it->second.pop_data_ptrs(end_type, n);
+    return it->second.pop_data_ptrs(order, n);
 }
 
 void RMQServer::process_request_(RMQMessage &message)
@@ -230,7 +230,7 @@ void RMQServer::process_request_(RMQMessage &message)
     case CmdType::PEEK_DATA:
     case CmdType::POP_DATA: {
         std::string error_message = "";
-        if (message.end_type() == EndType::NONE)
+        if (message.order() == Order::NONE)
         {
             error_message.append("End type cannot be NONE for PEEK_DATA command. ");
         }
@@ -243,7 +243,7 @@ void RMQServer::process_request_(RMQMessage &message)
         if (!error_message.empty())
         {
             logger_->error(error_message);
-            RMQMessage reply(message.topic(), CmdType::ERROR, EndType::NONE, get_timestamp(), error_message);
+            RMQMessage reply(message.topic(), CmdType::ERROR, Order::NONE, get_timestamp(), error_message);
             std::string reply_data = reply.serialize();
             socket_.send(zmq::message_t(reply_data.data(), reply_data.size()), zmq::send_flags::none);
             break;
@@ -251,9 +251,9 @@ void RMQServer::process_request_(RMQMessage &message)
 
         int32_t n = bytes_to_int32(message.data_str());
         std::vector<TimedPtr> ptrs = message.cmd() == CmdType::PEEK_DATA
-                                         ? peek_data_ptrs_(message.topic(), message.end_type(), n)
-                                         : pop_data_ptrs_(message.topic(), message.end_type(), n);
-        RMQMessage reply(message.topic(), message.cmd(), message.end_type(), get_timestamp(), ptrs);
+                                         ? peek_data_ptrs_(message.topic(), message.order(), n)
+                                         : pop_data_ptrs_(message.topic(), message.order(), n);
+        RMQMessage reply(message.topic(), message.cmd(), message.order(), get_timestamp(), ptrs);
         std::string reply_data = reply.serialize();
         socket_.send(zmq::message_t(reply_data.data(), reply_data.size()), zmq::send_flags::none);
         break;
@@ -273,9 +273,9 @@ void RMQServer::process_request_(RMQMessage &message)
                     if (reply_ready_) // Wait until the request is processed by the main thread
                     {
 
-                        std::vector<TimedPtr> reply_ptrs = pop_data_ptrs_(message.topic(), EndType::EARLIEST, -1);
-                        RMQMessage reply(message.topic(), CmdType::REQUEST_WITH_DATA, EndType::EARLIEST,
-                                         get_timestamp(), reply_ptrs);
+                        std::vector<TimedPtr> reply_ptrs = pop_data_ptrs_(message.topic(), Order::EARLIEST, -1);
+                        RMQMessage reply(message.topic(), CmdType::REQUEST_WITH_DATA, Order::EARLIEST, get_timestamp(),
+                                         reply_ptrs);
                         std::string reply_data = reply.serialize();
                         socket_.send(zmq::message_t(reply_data.data(), reply_data.size()), zmq::send_flags::none);
                         reply_ready_ = false;
@@ -291,7 +291,7 @@ void RMQServer::process_request_(RMQMessage &message)
     default: {
         std::string error_message = "Received unknown command: " + std::to_string(static_cast<int>(message.cmd()));
         logger_->error(error_message);
-        RMQMessage reply(message.topic(), CmdType::ERROR, EndType::NONE, get_timestamp(), error_message);
+        RMQMessage reply(message.topic(), CmdType::ERROR, Order::NONE, get_timestamp(), error_message);
         std::string reply_data = reply.serialize();
         socket_.send(zmq::message_t(reply_data.data(), reply_data.size()), zmq::send_flags::none);
         break;

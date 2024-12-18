@@ -1,6 +1,6 @@
 /**
  * Copyright (c) 2024 Yihuai Gao
- * 
+ *
  * This software is released under the MIT License.
  * https://opensource.org/licenses/MIT
  */
@@ -22,7 +22,7 @@ using TimedPtr = std::tuple<PyBytesPtr, double>;
 int64_t steady_clock_us();
 int64_t system_clock_us();
 
-enum class EndType : int8_t
+enum class Order : int8_t
 {
     NONE = 0,
     EARLIEST = 1,
@@ -36,5 +36,5 @@ int32_t bytes_to_int32(const std::string &bytes);
 std::string double_to_bytes(double value);
 double bytes_to_double(const std::string &bytes);
 std::string bytes_to_hex(const std::string &bytes);
-std::string end_type_to_str(EndType end_type);
-EndType str_to_end_type(const std::string &end_type);
+std::string order_to_str(Order order);
+Order str_to_order(const std::string &order);

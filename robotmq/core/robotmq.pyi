@@ -13,26 +13,83 @@ class RMQServer:
     def add_topic(self, topic: str, max_remaining_time: float) -> None: ...
     def put_data(self, topic: str, data: bytes) -> None: ...
     def peek_data(
-        self, topic: str, end_type: str, n: int
-    ) -> tuple[list[bytes], list[float]]: ...
+        self, topic: str, order: str, n: int
+    ) -> tuple[list[bytes], list[float]]:
+        """Peek at data from a specified topic without removing it.
+
+        Args:
+            topic (str): The topic name to peek data from
+            order (str): Data ordering, either "earliest" or "latest".
+                If "latest", the latest data will appear in the first position
+            n (int): Number of data items to retrieve. If n < 0, all data items will be retrieved.
+
+        Returns:
+            tuple[list[bytes], list[float]]: A tuple containing:
+                - list[bytes]: The data items
+                - list[float]: Corresponding timestamps
+        """
+
     def pop_data(
-        self, topic: str, end_type: str, n: int
+        self, topic: str, order: str, n: int
     ) -> tuple[list[bytes], list[float]]: ...
+    """Pop data from a specified topic.
+
+    Args:
+        topic (str): The topic name to pop data from
+        order (str): Data ordering, either "earliest" or "latest".
+            If "latest", the latest data will appear in the first position
+        n (int): Number of data items to retrieve. If n < 0, all data items will be retrieved.
+
+    Returns:
+        tuple[list[bytes], list[float]]: A tuple containing:
+            - list[bytes]: The data items
+            - list[float]: Corresponding timestamps
+    """
     def get_topic_status(self) -> dict[str, int]: ...
     def get_timestamp(self) -> float: ...
     def reset_start_time(self, system_time_us: int) -> None: ...
-    def wait_for_request(self, topic: str, timeout: float) -> tuple[list[bytes], list[float]]: ...
+    def wait_for_request(
+        self, topic: str, timeout: float
+    ) -> tuple[list[bytes], list[float]]: ...
     def reply_request(self, topic: str, data: list[bytes]) -> None: ...
 
 class RMQClient:
     def __init__(self, client_name: str, server_endpoint: str) -> None: ...
     def peek_data(
-        self, topic: str, end_type: str, n: int
+        self, topic: str, order: str, n: int
     ) -> tuple[list[bytes], list[float]]: ...
+    """Peek at data from a specified topic without removing it.
+
+    Args:
+        topic (str): The topic name to peek data from
+        order (str): Data ordering, either "earliest" or "latest".
+            If "latest", the latest data will appear in the first position
+        n (int): Number of data items to retrieve. If n < 0, all data items will be retrieved.
+
+    Returns:
+        tuple[list[bytes], list[float]]: A tuple containing:
+            - list[bytes]: The data items
+            - list[float]: Corresponding timestamps
+    """
     def pop_data(
-        self, topic: str, end_type: str, n: int
+        self, topic: str, order: str, n: int
     ) -> tuple[list[bytes], list[float]]: ...
+    """Pop data from a specified topic.
+
+    Args:
+        topic (str): The topic name to pop data from
+        order (str): Data ordering, either "earliest" or "latest".
+            If "latest", the latest data will appear in the first position
+        n (int): Number of data items to retrieve. If n < 0, all data items will be retrieved.
+
+    Returns:
+        tuple[list[bytes], list[float]]: A tuple containing:
+            - list[bytes]: The data items
+            - list[float]: Corresponding timestamps
+    """
     def get_last_retrieved_data(self) -> tuple[list[bytes], list[float]]: ...
     def get_timestamp(self) -> float: ...
     def reset_start_time(self, system_time_us: int) -> None: ...
-    def request_with_data(self, topic: str, data: list[bytes]) -> tuple[list[bytes], list[float]]: ...
+    def request_with_data(
+        self, topic: str, data: list[bytes]
+    ) -> tuple[list[bytes], list[float]]: ...

@@ -1,6 +1,6 @@
 /**
  * Copyright (c) 2024 Yihuai Gao
- * 
+ *
  * This software is released under the MIT License.
  * https://opensource.org/licenses/MIT
  */
@@ -71,28 +71,28 @@ std::string bytes_to_hex(const std::string &bytes)
     return hex_stream.str();
 }
 
-std::string end_type_to_str(EndType end_type)
+std::string order_to_str(Order order)
 {
-    if (end_type == EndType::EARLIEST)
+    if (order == Order::EARLIEST)
     {
         return "earliest";
     }
-    else if (end_type == EndType::LATEST)
+    else if (order == Order::LATEST)
     {
         return "latest";
     }
     throw std::invalid_argument("Invalid end type");
 }
 
-EndType str_to_end_type(const std::string &end_type)
+Order str_to_order(const std::string &order)
 {
-    if (end_type == "earliest")
+    if (order == "earliest")
     {
-        return EndType::EARLIEST;
+        return Order::EARLIEST;
     }
-    else if (end_type == "latest")
+    else if (order == "latest")
     {
-        return EndType::LATEST;
+        return Order::LATEST;
     }
-    throw std::invalid_argument("Invalid end type: " + end_type);
+    throw std::invalid_argument("Invalid end type: " + order);
 }

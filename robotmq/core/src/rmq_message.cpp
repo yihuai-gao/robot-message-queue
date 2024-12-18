@@ -1,22 +1,22 @@
 /**
  * Copyright (c) 2024 Yihuai Gao
- * 
+ *
  * This software is released under the MIT License.
  * https://opensource.org/licenses/MIT
  */
 
 #include "rmq_message.h"
 
-RMQMessage::RMQMessage(const std::string &topic, CmdType cmd, EndType end_type, double timestamp,
+RMQMessage::RMQMessage(const std::string &topic, CmdType cmd, Order order, double timestamp,
                        const std::vector<TimedPtr> &data_ptrs)
-    : topic_(topic), cmd_(cmd), end_type_(end_type), timestamp_(timestamp), data_ptrs_(data_ptrs)
+    : topic_(topic), cmd_(cmd), order_(order), timestamp_(timestamp), data_ptrs_(data_ptrs)
 {
     check_input_validity_();
 }
 
-RMQMessage::RMQMessage(const std::string &topic, CmdType cmd, EndType end_type, double timestamp,
+RMQMessage::RMQMessage(const std::string &topic, CmdType cmd, Order order, double timestamp,
                        const std::string &data_str)
-    : topic_(topic), cmd_(cmd), end_type_(end_type), timestamp_(timestamp), data_str_(data_str)
+    : topic_(topic), cmd_(cmd), order_(order), timestamp_(timestamp), data_str_(data_str)
 {
     check_input_validity_();
 }
@@ -34,8 +34,8 @@ RMQMessage::RMQMessage(const std::string &serialized)
     decode_start_index += topic_length;
     cmd_ = static_cast<CmdType>(serialized[decode_start_index]);
     decode_start_index += sizeof(CmdType);
-    end_type_ = static_cast<EndType>(serialized[decode_start_index]);
-    decode_start_index += sizeof(EndType);
+    order_ = static_cast<Order>(serialized[decode_start_index]);
+    decode_start_index += sizeof(Order);
     timestamp_ = bytes_to_double(
         std::string(serialized.begin() + decode_start_index, serialized.begin() + decode_start_index + sizeof(double)));
     decode_start_index += sizeof(double);
@@ -52,9 +52,9 @@ CmdType RMQMessage::cmd() const
     return cmd_;
 }
 
-EndType RMQMessage::end_type() const
+Order RMQMessage::order() const
 {
-    return end_type_;
+    return order_;
 }
 
 double RMQMessage::timestamp() const
@@ -91,7 +91,7 @@ std::string RMQMessage::serialize()
     serialized.push_back(static_cast<char>(uint8_t(topic_.size())));
     serialized.append(topic_);
     serialized.push_back(static_cast<char>(cmd_));
-    serialized.push_back(static_cast<char>(end_type_));
+    serialized.push_back(static_cast<char>(order_));
     serialized.append(double_to_bytes(timestamp_));
     serialized.append(data_str());
     return serialized;
