@@ -1,6 +1,6 @@
 /**
  * Copyright (c) 2024 Yihuai Gao
- * 
+ *
  * This software is released under the MIT License.
  * https://opensource.org/licenses/MIT
  */
@@ -34,7 +34,9 @@ std::vector<TimedPtr> DataTopic::peek_data_ptrs(EndType end_type, int32_t n)
     }
     if (end_type == EndType::LATEST)
     {
-        return std::vector<TimedPtr>(data_.end() - n, data_.end());
+        std::vector<TimedPtr> result(data_.end() - n, data_.end());
+        std::reverse(result.begin(), result.end());
+        return result;
     }
     else if (end_type == EndType::EARLIEST)
     {

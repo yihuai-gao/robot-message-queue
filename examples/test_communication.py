@@ -20,18 +20,20 @@ def test_communication():
     server.add_topic("test", 10)
     rand_data_list: list[npt.NDArray[np.float64]] = []
     for k in range(10):
-        rand_data = np.random.rand(1000000)
+        rand_data = np.random.rand(1000000).astype(np.float64)
         rand_data_list.append(rand_data)
         start_time = time.time()
-        pickle_data = pickle.dumps(rand_data)
+        # Using pickle also works, especially for arbitrary python objects
+        # pickle_data = pickle.dumps(rand_data)
         dump_end_time = time.time()
-        server.put_data("test", pickle_data)
+        server.put_data("test", rand_data.tobytes())
         send_end_time = time.time()
         time.sleep(0.01)
         retrieve_start_time = time.time()
         retrieved_data, timestamp = client.peek_data("test", "latest", 1)
         retrieve_end_time = time.time()
-        received_data = pickle.loads(retrieved_data[0])
+        received_data = np.frombuffer(retrieved_data[0], dtype=np.float64)
+        # received_data = pickle.loads(retrieved_data[0])
         print(
             f"Data size: {rand_data.nbytes / 1024**2:.3f}MB. dump: {dump_end_time - start_time:.4f}s, send: {send_end_time - dump_end_time: .4f}s, retrieve: {retrieve_end_time - retrieve_start_time:.4f}s, load: {time.time() - retrieve_end_time:.4f}s, correctness: {np.allclose(received_data, rand_data)}"
         )

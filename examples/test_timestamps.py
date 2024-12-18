@@ -5,7 +5,6 @@
  https://opensource.org/licenses/MIT
 """
 
-from difflib import restore
 import robotmq as rmq
 import time
 import pickle

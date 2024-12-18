@@ -21,6 +21,7 @@ def test_client():
         end_peeking_time = time.time()
 
         if raw_data_list:
+            # You can also use pickle to deserialize the arbitrary data
             data = np.frombuffer(raw_data_list[0], dtype=np.float64)
 
             print(
