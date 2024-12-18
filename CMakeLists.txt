@@ -11,12 +11,18 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-if(DEFINED ENV{CONDA_PREFIX})
-    set(Python_ROOT_DIR $ENV{CONDA_PREFIX})
-    set(Python_EXECUTABLE $ENV{CONDA_PREFIX}/bin/python)
-endif()
+
+# if(DEFINED ENV{PYTHON_EXECUTABLE})
+#     set(Python_EXECUTABLE $ENV{PYTHON_EXECUTABLE})
+# endif()
+
+
+# set(Python_EXECUTABLE /opt/python/cp310-cp310/bin/python)
+# set(Python_INCLUDE_DIRS /opt/python/cp310-cp310/include/python3.10)
+# set(Python_LIBRARIES /opt/python/cp310-cp310/lib/libpython3.10.so)
 
 find_package(Python COMPONENTS Interpreter Development REQUIRED)
+
 find_package(pybind11 CONFIG REQUIRED)
 find_package(ZeroMQ REQUIRED)
 find_package(Boost REQUIRED COMPONENTS system)
@@ -79,3 +85,7 @@ endif()
 
 
 message(STATUS "Python_EXECUTABLE: ${Python_EXECUTABLE}")
+
+# 'cmake', '/io', '-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=/io/build/lib.linux-x86_64-cpython-310/robotmq/core', '-DPYTHON_EXECUTABLE=/opt/python/cp310-cp310/bin/python', '-DPYTHON_INCLUDE_DIR=/opt/python/cp310-cp310/include/python3.10', '-DPYTHON_LIBRARY=/opt/python/cp310-cp310/lib/libpython3.10.so', '-DCMAKE_POSITION_INDEPENDENT_CODE=ON', '-DCMAKE_BUILD_TYPE=Release'
+
+# CIBW_BEFORE_BUILD_LINUX="apt-get update && apt-get install -y libspdlog-dev libboost-all-dev libfmt-dev libzmq3-dev libczmq-dev"

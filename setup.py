@@ -5,7 +5,7 @@
  https://opensource.org/licenses/MIT
 """
 
-from setuptools import setup, Extension, find_packages
+from setuptools import setup, Extension
 from setuptools.command.build_ext import build_ext
 import sys
 import os
@@ -30,44 +30,27 @@ class CMakeBuild(build_ext):
 
     def build_extension(self, ext):
         extdir = os.path.abspath(os.path.dirname(self.get_ext_fullpath(ext.name)))
-        
-        # Get the directory containing setup.py
-        source_dir = os.path.dirname(os.path.abspath(__file__))
-        
+
         cmake_args = [
             f"-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={extdir}",
-            f"-DPYTHON_EXECUTABLE={sys.executable}",
+            f"-DPython_EXECUTABLE={sys.executable}",
+            f"-DPython_INCLUDE_DIRS={sys.prefix}/include/python{sys.version_info.major}.{sys.version_info.minor}",
+            f"-DPython_LIBRARIES={sys.prefix}/lib/libpython{sys.version_info.major}.{sys.version_info.minor}.so",
             "-DCMAKE_POSITION_INDEPENDENT_CODE=ON",
         ]
-
-        # # Detect platform-specific settings
-        # if platform.system() == "Windows":
-        #     cmake_args += ['-DCMAKE_LIBRARY_OUTPUT_DIRECTORY_{}={}'.format(
-        #         cfg.upper(), extdir)]
-        #     if sys.maxsize > 2**32:
-        #         cmake_args += ["-A", "x64"]
 
         cfg = "Debug" if self.debug else "Release"
         build_args = ["--config", cfg]
         cmake_args += [f"-DCMAKE_BUILD_TYPE={cfg}"]
-        # if platform.system() == "Windows":
-        #     build_args += ["--", "/m"]
-        # else:
         build_args += ["--", "-j"]
-        
+
         build_temp = os.path.join(self.build_temp, ext.name)
         if not os.path.exists(build_temp):
             os.makedirs(build_temp)
-        # Define env before subprocess calls
-        env = os.environ.copy()
 
-        # Use source_dir instead of ext.sourcedir
-        subprocess.check_call(
-            ["cmake", source_dir] + cmake_args, cwd=build_temp, env=env
-        )
-        subprocess.check_call(
-            ["cmake", "--build", "."] + build_args, cwd=build_temp
-        )
+        subprocess.check_call(["cmake", ext.sourcedir] + cmake_args, cwd=build_temp)
+        subprocess.check_call(["cmake", "--build", "."] + build_args, cwd=build_temp)
+
 
 setup(
     ext_modules=[CMakeExtension("robotmq.core.robotmq")],

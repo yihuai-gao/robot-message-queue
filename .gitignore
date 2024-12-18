@@ -4,3 +4,4 @@ build
 pyrightconfig.json
 __pycache__
 dist
+wheelhouse

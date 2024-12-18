@@ -25,18 +25,18 @@
 
 ```bash
 # It is recommended to install all C++ dependencies into your conda environment
-conda install spdlog cppzmq zeromq boost -y
+conda install spdlog cppzmq zeromq boost pybind11 -y
 # Alternatively, if you are not using conda, you can install the dependencies using sudo (not recommended)
 # sudo apt install spdlog cppzmq zeromq5-dev libboost-all-dev -y
 
 # Install the robotmq package
-pip install robotmq
+pip install .
 ```
 
 ## Examples
 
 ```bash
-pip install robotmq[examples]
+pip install .[examples]
 python examples/test_communication.py
 
 # Run the server and client in different terminals

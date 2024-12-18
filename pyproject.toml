@@ -5,6 +5,7 @@ requires = [
     "cmake>=3.10",
     "ninja",          # Optional but recommended for faster builds
     "scikit-build",   # Helps with CMake integration
+    "cibuildwheel",
 ]
 build-backend = "setuptools.build_meta"
 
@@ -16,6 +17,7 @@ description = "A light-weight and flexible Robot-centric Message Queue for Pytho
 dependencies = [
     "pybind11", # For Python bindings
 ]
+# requires-python = ">=3.10"
 
 classifiers = [
     "Programming Language :: Python :: 3",
