@@ -16,6 +16,7 @@ authors = [{ name = "Yihuai Gao", email = "yihuai@stanford.edu" }]
 description = "A light-weight and flexible Robot-centric Message Queue for Python applications"
 dependencies = [
     "pybind11", # For Python bindings
+    "numpy",
 ]
 # requires-python = ">=3.10"
 
@@ -38,4 +39,5 @@ package-data = { robotmq = [
     "core/include/*",
     "core/src/*",
     "core/*.so",
+    "utils.py",
 ] }
