@@ -37,4 +37,5 @@ package-data = { robotmq = [
     "py/*.pyi",
     "core/include/*",
     "core/src/*",
+    "core/*.so",
 ] }
