@@ -106,7 +106,7 @@ pybind11::tuple RMQServer::pop_data(const std::string &topic, std::string order_
     return pybind11::make_tuple(data, timestamps);
 }
 
-pybind11::tuple RMQServer::wait_for_request(const std::string &topic, double timeout)
+pybind11::tuple RMQServer::wait_for_request(double timeout)
 {
     double start_time = get_timestamp();
     if (timeout < 0)
@@ -118,34 +118,38 @@ pybind11::tuple RMQServer::wait_for_request(const std::string &topic, double tim
         std::this_thread::sleep_for(std::chrono::microseconds(100));
         {
             std::lock_guard<std::mutex> lock(get_new_request_mutex_);
-            if (get_new_request_)
+            if (get_new_request_ != "")
             {
-                get_new_request_ = false;
-                return pop_data(topic, "earliest", -1);
+                std::string topic = get_new_request_;
+                get_new_request_ = "";
+                std::vector<TimedPtr> ptrs = pop_data_ptrs_(topic, Order::LATEST, -1);
+                if (ptrs.size() == 0)
+                {
+                    logger_->error("Failed to pop data from topic {}. Please check if the topic is added.", topic);
+                    return pybind11::make_tuple(PyBytes(), pybind11::str(topic));
+                }
+                else if (ptrs.size() > 1)
+                {
+                    logger_->error("Received more than one data from topic {}. Will only return the latest data.",
+                                   topic);
+                }
+                // Clear the queue and return the latest data
+                PyBytes data = *std::get<0>(ptrs[0]);
+                ptrs.clear();
+                return pybind11::make_tuple(data, pybind11::str(topic));
             }
         }
     }
-    logger_->warn("Timeout when waiting for request on topic {}", topic);
-    return pybind11::make_tuple(pybind11::list(), pybind11::list());
+    logger_->debug("Timeout when waiting for request ");
+    return pybind11::make_tuple(pybind11::bytes(), pybind11::str(""));
 }
 
-void RMQServer::reply_request(const std::string &topic, const pybind11::list &data)
+void RMQServer::reply_request(const std::string &topic, const pybind11::bytes &data)
 {
-
-    for (const auto &item : data)
+    put_data(topic, data);
     {
-        if (pybind11::isinstance<PyBytes>(item))
-        {
-            put_data(topic, pybind11::cast<PyBytes>(item));
-        }
-        else
-        {
-            throw std::invalid_argument("All items in the data list must be python bytes objects.");
-        }
-    }
-    {
-        std::lock_guard<std::mutex> lock(reply_ready_mutex_);
-        reply_ready_ = true;
+        std::lock_guard<std::mutex> lock(reply_mutex_);
+        reply_topic_ = topic;
     }
 }
 
@@ -215,16 +219,33 @@ std::vector<TimedPtr> RMQServer::pop_data_ptrs_(const std::string &topic, Order 
     auto it = data_topics_.find(topic);
     if (it == data_topics_.end())
     {
-        logger_->warn("Requested last k data for unknown topic {}. Please first call add_topic to add it into the "
-                      "recorded topics.",
-                      topic);
+        logger_->warn(
+            "Requested data for unknown topic {}. Please first call add_topic to add it into the server topics.",
+            topic);
         return {};
     }
     return it->second.pop_data_ptrs(order, n);
 }
 
+bool RMQServer::exists_topic_(const std::string &topic)
+{
+    std::lock_guard<std::mutex> lock(data_topic_mutex_);
+    return data_topics_.find(topic) != data_topics_.end();
+}
+
 void RMQServer::process_request_(RMQMessage &message)
 {
+    // Check if the topic is already in the data_topics_
+    if (!exists_topic_(message.topic()))
+    {
+        std::string error_message =
+            "Topic `" + message.topic() + "` not found. Please first call add_topic to add it into the server topics.";
+        RMQMessage reply(message.topic(), CmdType::ERROR, Order::NONE, get_timestamp(), error_message);
+        std::string reply_data = reply.serialize();
+        logger_->error(error_message);
+        socket_.send(zmq::message_t(reply_data.data(), reply_data.size()), zmq::send_flags::none);
+        return;
+    }
     switch (message.cmd())
     {
     case CmdType::PEEK_DATA:
@@ -264,25 +285,25 @@ void RMQServer::process_request_(RMQMessage &message)
             add_data_ptrs_(message.topic(), message.data_ptrs());
             {
                 std::lock_guard<std::mutex> lock(get_new_request_mutex_);
-                get_new_request_ = true;
+                get_new_request_ = message.topic();
             }
             while (true)
             {
+                std::this_thread::sleep_for(std::chrono::microseconds(100));
                 {
-                    std::lock_guard<std::mutex> lock(reply_ready_mutex_);
-                    if (reply_ready_) // Wait until the request is processed by the main thread
+                    std::lock_guard<std::mutex> lock(reply_mutex_);
+                    if (reply_topic_ != "") // Wait until the request is processed by the main thread
                     {
-
+                        assert(reply_topic_ == message.topic());
+                        reply_topic_ = "";
                         std::vector<TimedPtr> reply_ptrs = pop_data_ptrs_(message.topic(), Order::EARLIEST, -1);
                         RMQMessage reply(message.topic(), CmdType::REQUEST_WITH_DATA, Order::EARLIEST, get_timestamp(),
                                          reply_ptrs);
                         std::string reply_data = reply.serialize();
                         socket_.send(zmq::message_t(reply_data.data(), reply_data.size()), zmq::send_flags::none);
-                        reply_ready_ = false;
                         break;
                     }
                 }
-                std::this_thread::sleep_for(std::chrono::microseconds(100));
             }
             break;
         }

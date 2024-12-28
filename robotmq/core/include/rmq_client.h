@@ -25,7 +25,7 @@ class RMQClient
     pybind11::tuple peek_data(const std::string &topic, std::string order, int32_t n);
     pybind11::tuple pop_data(const std::string &topic, std::string order, int32_t n);
     pybind11::tuple get_last_retrieved_data();
-    pybind11::tuple request_with_data(const std::string &topic, const pybind11::list &data);
+    PyBytes request_with_data(const std::string &topic, const PyBytes &data);
 
     double get_timestamp();
     void reset_start_time(int64_t system_time_us);

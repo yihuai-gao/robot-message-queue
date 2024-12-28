@@ -50,21 +50,18 @@ pybind11::tuple RMQClient::pop_data(const std::string &topic, std::string order,
     return ptrs_to_tuple_(reply_ptrs);
 }
 
-pybind11::tuple RMQClient::request_with_data(const std::string &topic, const pybind11::list &data)
+PyBytes RMQClient::request_with_data(const std::string &topic, const PyBytes &data)
 {
     std::vector<TimedPtr> timed_ptrs;
-    for (const auto &item : data)
+    if (pybind11::isinstance<PyBytes>(data))
     {
-        if (pybind11::isinstance<PyBytes>(item))
-        {
-            PyBytesPtr data_ptr = std::make_shared<PyBytes>(pybind11::cast<PyBytes>(item));
-            TimedPtr timed_ptr = std::make_tuple(data_ptr, get_timestamp());
-            timed_ptrs.push_back(timed_ptr);
-        }
-        else
-        {
-            throw std::invalid_argument("All items in the list must be of type PyBytes");
-        }
+        PyBytesPtr data_ptr = std::make_shared<PyBytes>(pybind11::cast<PyBytes>(data));
+        TimedPtr timed_ptr = std::make_tuple(data_ptr, get_timestamp());
+        timed_ptrs.push_back(timed_ptr);
+    }
+    else
+    {
+        throw std::invalid_argument("Expected a PyBytes object, but received " + std::string(typeid(data).name()));
     }
     RMQMessage message(topic, CmdType::REQUEST_WITH_DATA, Order::EARLIEST, get_timestamp(), timed_ptrs);
     std::vector<TimedPtr> reply_ptrs = send_request_(message);
@@ -72,7 +69,12 @@ pybind11::tuple RMQClient::request_with_data(const std::string &topic, const pyb
     {
         logger_->error("No response from server for request with data on topic: {}", topic);
     }
-    return ptrs_to_tuple_(reply_ptrs);
+    if (reply_ptrs.size() != 1)
+    {
+        throw std::runtime_error("Expected 1 reply pointer, but received " + std::to_string(reply_ptrs.size()));
+    }
+    PyBytesPtr data_ptr = std::get<0>(reply_ptrs[0]);
+    return *data_ptr;
 }
 
 pybind11::tuple RMQClient::get_last_retrieved_data()
@@ -121,6 +123,10 @@ std::vector<TimedPtr> RMQClient::send_request_(RMQMessage &message)
     {
         throw std::runtime_error("Command type mismatch. Sent " + std::to_string(static_cast<int>(message.cmd())) +
                                  " but received " + std::to_string(static_cast<int>(reply_message.cmd())));
+    }
+    if (reply_message.topic() != message.topic())
+    {
+        throw std::runtime_error("Topic mismatch. Sent " + message.topic() + " but received " + reply_message.topic());
     }
     if (reply_message.cmd() == CmdType::PEEK_DATA || reply_message.cmd() == CmdType::POP_DATA ||
         reply_message.cmd() == CmdType::REQUEST_WITH_DATA)

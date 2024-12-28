@@ -77,9 +77,11 @@
         "codecvt": "cpp",
         "filesystem": "cpp",
         "bitset": "cpp",
-        "span": "cpp"
+        "span": "cpp",
+        "format": "cpp"
     },
     "licenser.useSingleLineStyle": false,
     "licenser.projectName": "robotmq",
     "licenser.license": "MIT",
+    "C_Cpp.default.compilerPath": "/usr/bin/gcc",
 }

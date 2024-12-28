@@ -28,7 +28,7 @@ def _deserialize_numpy(data: Any):
     elif isinstance(data, tuple):
         if len(data) == 3 and isinstance(data[0], bytes) and isinstance(data[1], str) and isinstance(data[2], tuple):
             try:
-                return np.frombuffer(data[0], dtype=data[1]).reshape(data[2])
+                return np.frombuffer(data[0], dtype=data[1]).reshape(data[2]).copy()
             except Exception as e:
                 pass
         return tuple(_deserialize_numpy(item) for item in data)

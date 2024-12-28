@@ -5,7 +5,9 @@
             "includePath": [
                 "${workspaceFolder}/**",
                 "${workspaceFolder}/include",
-                "${HOME}/miniforge3/envs/teleop-utils/include"
+                "${env:CONDA_PREFIX}/include",
+                "${env:CONDA_PREFIX}/include/python3.12",
+                "${env:CONDA_PREFIX}/include/python3.10",
             ],
             "defines": [],
             "compilerPath": "/usr/bin/gcc",

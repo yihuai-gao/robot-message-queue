@@ -86,11 +86,11 @@ std::string order_to_str(Order order)
 
 Order str_to_order(const std::string &order)
 {
-    if (order == "earliest")
+    if (order == "earliest" || order == "EARLIEST")
     {
         return Order::EARLIEST;
     }
-    else if (order == "latest")
+    else if (order == "latest" || order == "LATEST")
     {
         return Order::LATEST;
     }

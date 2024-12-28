@@ -44,7 +44,7 @@ PYBIND11_MODULE(robotmq_core, m)
         .def("pop_data", &RMQServer::pop_data, py::arg("topic"), py::arg("order"), py::arg("n"))
         .def("get_topic_status", &RMQServer::get_topic_status)
         .def("reset_start_time", &RMQServer::reset_start_time, py::arg("system_time_us"))
-        .def("wait_for_request", &RMQServer::wait_for_request, py::arg("topic"), py::arg("timeout"))
+        .def("wait_for_request", &RMQServer::wait_for_request, py::arg("timeout"))
         .def("reply_request", &RMQServer::reply_request, py::arg("topic"), py::arg("data"))
         .def("get_timestamp", &RMQServer::get_timestamp);
 }
