@@ -5,10 +5,19 @@
  https://opensource.org/licenses/MIT
 """
 
+import pickle
 from robotmq import RMQClient
 import time
 import numpy as np
 import numpy.typing as npt
+
+from robotmq.utils import deserialize_numpy
+import os
+import sys
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from examples.asynchronous_server import TestClass
 
 
 def test_client():
@@ -17,16 +26,28 @@ def test_client():
 
     while True:
         start_time = time.time()
-        raw_data_list, timestamps = client.pop_data("test", "earliest", 1)
-        end_peeking_time = time.time()
-
+        raw_data_list, timestamps = client.pop_data("test_raw_np", "earliest", 1)
+        end_popping_time = time.time()
         if raw_data_list:
             # You can also use pickle to deserialize the arbitrary data
             data = np.frombuffer(raw_data_list[0], dtype=np.float64)
-
             print(
-                f"Received data: shape: {data.shape}, size: {data.nbytes / 1024**2:.3f}MB, peeking time: {end_peeking_time - start_time:.3f}s"
+                f"Received numpy data: shape: {data.shape}, size: {data.nbytes / 1024**2:.3f}MB, receiving time: {end_popping_time - start_time:.3f}s"
             )
+
+        nested_data_list, timestamps = client.pop_data("test_nested_np", "earliest", 1)
+        if nested_data_list:
+            nested_data = deserialize_numpy(nested_data_list[0])
+            print(f"Received nested data: {nested_data}")
+
+        pickle_data_list, timestamps = client.pop_data("test_pickle", "earliest", 1)
+        if pickle_data_list:
+            pickle_data = pickle.loads(pickle_data_list[0])
+            assert isinstance(pickle_data, TestClass)
+            print(
+                f"Received pickle data type: {type(pickle_data)}, attrs: name={pickle_data.name}, data={pickle_data.data}"
+            )
+
         time.sleep(0.1)
 
 

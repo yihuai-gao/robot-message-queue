@@ -58,5 +58,5 @@ python examples/syncronous_server.py # in terminal A
 python examples/syncronous_client.py # in terminal B
 ```
 
-## Trouble shooting
+## Troubleshooting
 - If you encounter numpy errors (related to `numpy._core`), this usually happens if you call `pickle.dumps()` and `pickle.loads()` to a struct containing numpy arrays, and you have different numpy versions in the server and client python environments. To handle this, instead of using `pickle.dumps()`, you can call `robotmq.utils.serialize_numpy()` to serialize any nested (arbitrarily deep) list/dict/tuple of numpy arrays or other regular types (int/float/str/bytes). This function will use the `tobytes()` method of numpy arrays, thus will not lead any numpy version problems.
