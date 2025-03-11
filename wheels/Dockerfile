@@ -49,44 +49,39 @@ RUN git clone https://github.com/yihuai-gao/robot-message-queue.git && \
 
 COPY CMakeLists.txt robot-message-queue/CMakeLists.txt
 
+RUN yum install -y tmux
 
 RUN cd robot-message-queue && \
-    /opt/python/cp38-cp38/bin/python -m venv cp38 && \
-    source cp38/bin/activate && \
+    set -e && \
+    # for PYTHON_VERSION in cp37-cp37m cp38-cp38 cp39-cp39 cp310-cp310 cp311-cp311 cp312-cp312 cp313-cp313 cp313-cp313t; do \
+    # There are bugs in cp312 (core dump)
+    for PYTHON_VERSION in cp38-cp38 cp39-cp39 cp310-cp310 cp311-cp311; do \
+    /opt/python/${PYTHON_VERSION}/bin/python -m venv ${PYTHON_VERSION} && \
+    source ${PYTHON_VERSION}/bin/activate && \
     pip install pybind11 && \
     pip install -e . && \
     pip wheel . && \
-    auditwheel repair robotmq-0.1.0-cp38-cp38-linux_x86_64.whl
+    auditwheel repair robotmq-0.1.0-${PYTHON_VERSION}-linux_x86_64.whl; \
+    done
 
-RUN cd robot-message-queue && \
-    /opt/python/cp39-cp39/bin/python -m venv cp39 && \
-    source cp39/bin/activate && \
-    pip install pybind11 && \
-    pip install -e . && \
-    pip wheel . && \
-    auditwheel repair robotmq-0.1.0-cp39-cp39-linux_x86_64.whl
-
-RUN cd robot-message-queue && \
-    /opt/python/cp310-cp310/bin/python -m venv cp310 && \
-    source cp310/bin/activate && \
-    pip install pybind11 && \
-    pip install -e . && \
-    pip wheel . && \
-    auditwheel repair robotmq-0.1.0-cp310-cp310-linux_x86_64.whl
-
-RUN cd robot-message-queue && \
-    /opt/python/cp311-cp311/bin/python -m venv cp311 && \
-    source cp311/bin/activate && \
-    pip install pybind11 && \
-    pip install -e . && \
-    pip wheel . && \
-    auditwheel repair robotmq-0.1.0-cp311-cp311-linux_x86_64.whl
-
-
-RUN cd robot-message-queue && \
-    /opt/python/cp312-cp312/bin/python -m venv cp312 && \
-    source cp312/bin/activate && \
-    pip install pybind11 && \
-    pip install -e . && \
-    pip wheel . && \
-    auditwheel repair robotmq-0.1.0-cp312-cp312-linux_x86_64.whl
+# RUN cd robot-message-queue && \
+#     set -e && \
+#     # Install GNU Parallel
+#     yum install -y parallel && \
+#     # Create a function to build wheel for a single Python version
+#     echo 'build_wheel() { \
+#     PYTHON_VERSION=$1; \
+#     /opt/python/${PYTHON_VERSION}/bin/python -m venv ${PYTHON_VERSION} && \
+#     source ${PYTHON_VERSION}/bin/activate && \
+#     pip install pybind11 && \
+#     pip install -e . && \
+#     pip wheel . && \
+#     auditwheel repair robotmq-0.1.0-${PYTHON_VERSION}-linux_x86_64.whl; \
+#     }' > build_wheel.sh && \
+#     # Export the function and make script executable
+#     chmod +x build_wheel.sh && \
+#     source build_wheel.sh && \
+#     export -f build_wheel && \
+#     # Run builds in parallel
+#     echo "cp38-cp38 cp39-cp39 cp310-cp310 cp311-cp311 cp312-cp312 cp313-cp313" | \
+#     tr ' ' '\n' | parallel build_wheel

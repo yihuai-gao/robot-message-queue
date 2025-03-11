@@ -17,7 +17,11 @@ import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from examples.asynchronous_server import TestClass
+
+class TestClass:  # This class can be defined in client's environment as well (if cannot be imported from server)
+    def __init__(self):
+        self.name = "test_class"
+        self.data = np.random.rand(10)
 
 
 def test_client():
