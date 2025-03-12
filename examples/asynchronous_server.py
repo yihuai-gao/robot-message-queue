@@ -28,6 +28,8 @@ def test_server():
     server.add_topic("test_raw_np", 10)
     server.add_topic("test_nested_np", 10)
     server.add_topic("test_pickle", 10)
+    # This topic is used to test the client's put_data function
+    server.add_topic("put_data_test", 10)
 
     data_cnt = 0
     rand_data_lens = [10000, 100000, 1000000, 10000000]
@@ -58,8 +60,9 @@ def test_server():
         time.sleep(1)
         data_cnt += 1
         topic_len = server.get_all_topic_status()["test_raw_np"]
+        client_put_message_num = server.get_all_topic_status()["put_data_test"]
         print(
-            f"Data cnt: {data_cnt} data size: {rand_data.nbytes / 1024**2:.3f}MB, topic size: {topic_len}"
+            f"Data cnt: {data_cnt} data size: {rand_data.nbytes / 1024**2:.3f}MB, server topic size: {topic_len}, client put message num: {client_put_message_num}"
         )
 
 

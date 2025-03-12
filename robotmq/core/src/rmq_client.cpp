@@ -34,9 +34,7 @@ int RMQClient::get_topic_status(const std::string &topic, double timeout_s)
     socket_.send(request, zmq::send_flags::none);
 
     zmq::pollitem_t items[] = {{socket_, 0, ZMQ_POLLIN, 0}};
-    logger_->info("Waiting for reply from server for get_topic_status on topic: {}", topic);
     zmq::poll(&items[0], 1, timeout_s * 1000);
-    logger_->info("Done polling for get_topic_status on topic: {}", topic);
     if (items[0].revents & ZMQ_POLLIN)
     {
         zmq::message_t reply;
@@ -46,12 +44,21 @@ int RMQClient::get_topic_status(const std::string &topic, double timeout_s)
         {
             return std::stoi(reply_message.data_str());
         }
+        else if (reply_message.cmd() == CmdType::ERROR)
+        {
+            throw std::runtime_error("Server returned error: " + reply_message.data_str());
+        }
         else
         {
             throw std::runtime_error("Invalid command type: " + std::to_string(static_cast<int>(reply_message.cmd())) +
                                      " for get_topic_status on topic: " + topic);
         }
     }
+
+    std::string endpoint = socket_.get(zmq::sockopt::last_endpoint);
+    socket_.close();
+    socket_ = zmq::socket_t(context_, zmq::socket_type::req);
+    socket_.connect(endpoint);
 
     return -2;
 }
@@ -95,19 +102,6 @@ void RMQClient::put_data(const std::string &topic, const PyBytes &data)
     }
     RMQMessage message(topic, CmdType::PUT_DATA, Order::NONE, get_timestamp(), timed_ptrs);
     std::vector<TimedPtr> reply_ptrs = send_request_(message);
-    if (reply_ptrs.empty())
-    {
-        logger_->error("No response from server for put data on topic: {}", topic);
-    }
-    if (reply_ptrs.size() != 1)
-    {
-        throw std::runtime_error("Expected 1 reply pointer, but received " + std::to_string(reply_ptrs.size()));
-    }
-    std::string reply_str = std::get<0>(reply_ptrs[0])->str();
-    if (reply_str != "OK")
-    {
-        logger_->error("Server returned error: {}", reply_str);
-    }
 }
 
 PyBytes RMQClient::request_with_data(const std::string &topic, const PyBytes &data)
@@ -188,7 +182,7 @@ std::vector<TimedPtr> RMQClient::send_request_(RMQMessage &message)
         throw std::runtime_error("Topic mismatch. Sent " + message.topic() + " but received " + reply_message.topic());
     }
     if (reply_message.cmd() == CmdType::PEEK_DATA || reply_message.cmd() == CmdType::POP_DATA ||
-        reply_message.cmd() == CmdType::REQUEST_WITH_DATA)
+        reply_message.cmd() == CmdType::REQUEST_WITH_DATA || reply_message.cmd() == CmdType::PUT_DATA)
     {
         last_retrieved_ptrs_ = reply_message.data_ptrs();
         return reply_message.data_ptrs();

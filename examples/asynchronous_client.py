@@ -32,10 +32,8 @@ def test_client():
         status = client.get_topic_status("test_raw_np", 0.1)
         if status == -2:
             print("Server does not exist")
-            continue
         elif status == -1:
             print("Topic does not exist")
-            continue
         elif status >= 0:
             print(f"Topic exists with {status} messages")
             break
@@ -63,6 +61,8 @@ def test_client():
             print(
                 f"Received pickle data type: {type(pickle_data)}, attrs: name={pickle_data.name}, data={pickle_data.data}"
             )
+
+        client.put_data("put_data_test", b"test")
 
         time.sleep(0.1)
 

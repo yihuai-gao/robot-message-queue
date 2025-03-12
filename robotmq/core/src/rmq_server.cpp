@@ -308,8 +308,23 @@ void RMQServer::process_request_(RMQMessage &message)
     }
 
     case CmdType::PUT_DATA: {
+        auto it = data_topics_.find(message.topic());
+        if (it == data_topics_.end())
+        {
+            logger_->error("Received data for unknown topic {}. Please first call add_topic to add it into the "
+                           "recorded topics.",
+                           message.topic());
+            RMQMessage reply(message.topic(), CmdType::ERROR, Order::NONE, get_timestamp(),
+                             "Topic `" + message.topic() +
+                                 "` not found. Please first call add_topic to add it into the "
+                                 "recorded topics.");
+            std::string reply_data = reply.serialize();
+            socket_.send(zmq::message_t(reply_data.data(), reply_data.size()), zmq::send_flags::none);
+            break;
+        }
         add_data_ptrs_(message.topic(), message.data_ptrs());
-        RMQMessage reply(message.topic(), CmdType::PUT_DATA, Order::NONE, get_timestamp(), std::string("OK"));
+        std::vector<TimedPtr> reply_ptrs;
+        RMQMessage reply(message.topic(), CmdType::PUT_DATA, Order::NONE, get_timestamp(), reply_ptrs);
         std::string reply_data = reply.serialize();
         socket_.send(zmq::message_t(reply_data.data(), reply_data.size()), zmq::send_flags::none);
         break;
