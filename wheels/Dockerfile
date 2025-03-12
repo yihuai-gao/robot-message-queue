@@ -44,7 +44,8 @@ RUN git clone https://github.com/gabime/spdlog.git && \
     make install
 
 RUN git clone https://github.com/yihuai-gao/robot-message-queue.git && \
-    cd robot-message-queue
+    cd robot-message-queue && \
+    git checkout $ROBOTMQ_COMMIT
 
 COPY CMakeLists.txt robot-message-queue/CMakeLists.txt
 

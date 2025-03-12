@@ -23,13 +23,13 @@
 
 ## Installation
 
-The prebuilt wheels for Linux x86_64 are available on [pypi](https://pypi.org/project/robotmq/). 
+The prebuilt wheels for Linux x86_64 are available on [pypi](https://pypi.org/project/robotmq/).
 
 ```bash
 pip install robotmq
 ```
 
-Currently the package only works under Python 3.8-3.11. For other platforms or python versions, you can manually build the package in a conda environment. Note that Python 3.12 is not supported due to some unknown issues (core dump without any error message).
+Currently the package works under Python 3.7-3.11 and 3.13. For other platforms or python versions, you can manually build the package in a conda environment. Python 3.12 is not supported due to some unknown issues (core dump without any error messages).
 
 ```bash
 # It is recommended to install all C++ dependencies into your conda environment
@@ -48,6 +48,8 @@ pip install .
 ```
 
 ## Examples
+
+You can run the server and client in **different Python environments**, even in different **Python versions** (except for Python 3.12).
 
 ```bash
 # If you are not installing the prebuild wheels, it is required to install the package in an editable way (with -e option).
