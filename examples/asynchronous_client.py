@@ -29,6 +29,18 @@ def test_client():
     print("Client created")
 
     while True:
+        status = client.get_topic_status("test_raw_np", 0.1)
+        if status == -2:
+            print("Server does not exist")
+            continue
+        elif status == -1:
+            print("Topic does not exist")
+            continue
+        elif status >= 0:
+            print(f"Topic exists with {status} messages")
+            break
+        time.sleep(1)
+    while True:
         start_time = time.time()
         raw_data_list, timestamps = client.pop_data("test_raw_np", "earliest", 1)
         end_popping_time = time.time()

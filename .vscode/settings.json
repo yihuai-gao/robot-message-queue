@@ -78,7 +78,10 @@
         "filesystem": "cpp",
         "bitset": "cpp",
         "span": "cpp",
-        "format": "cpp"
+        "format": "cpp",
+        "fstream": "cpp",
+        "shared_mutex": "cpp",
+        "stdfloat": "cpp"
     },
     "licenser.useSingleLineStyle": false,
     "licenser.projectName": "robotmq",

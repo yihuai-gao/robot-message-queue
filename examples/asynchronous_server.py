@@ -57,7 +57,7 @@ def test_server():
 
         time.sleep(1)
         data_cnt += 1
-        topic_len = server.get_topic_status()["test_raw_np"]
+        topic_len = server.get_all_topic_status()["test_raw_np"]
         print(
             f"Data cnt: {data_cnt} data size: {rand_data.nbytes / 1024**2:.3f}MB, topic size: {topic_len}"
         )

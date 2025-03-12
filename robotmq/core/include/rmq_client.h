@@ -22,8 +22,13 @@ class RMQClient
     RMQClient(const std::string &client_name, const std::string &server_endpoint);
     ~RMQClient();
 
+    int get_topic_status(const std::string &topic, double timeout_s);
+    // -1 if the server or topic does not exist: get no reply after timeout_s seconds
+    // 0 if the topic exists but has no data
+    // positive number means the number of data in the topic
     pybind11::tuple peek_data(const std::string &topic, std::string order, int32_t n);
     pybind11::tuple pop_data(const std::string &topic, std::string order, int32_t n);
+    void put_data(const std::string &topic, const PyBytes &data);
     pybind11::tuple get_last_retrieved_data();
     PyBytes request_with_data(const std::string &topic, const PyBytes &data);
 

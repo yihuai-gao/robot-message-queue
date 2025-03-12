@@ -17,6 +17,8 @@ enum class CmdType : int8_t
     POP_DATA = 2,
     REQUEST_WITH_DATA = 3,
     SYNCHRONIZE_TIME = 4,
+    PUT_DATA = 5,
+    GET_TOPIC_STATUS = 6,
     ERROR = -1,
     UNKNOWN = 0,
 };

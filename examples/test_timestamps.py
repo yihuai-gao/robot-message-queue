@@ -62,7 +62,7 @@ def test_timestamps():
     del data
     print(f"{data_len=}, memory usage: {get_memory_usage():.3f}MB")
 
-    topics = server.get_topic_status()
+    topics = server.get_all_topic_status()
     print(f"Topic status after popping: {topics}")
 
 

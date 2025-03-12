@@ -26,6 +26,36 @@ RMQClient::~RMQClient()
     context_.close();
 }
 
+int RMQClient::get_topic_status(const std::string &topic, double timeout_s)
+{
+    RMQMessage message(topic, CmdType::GET_TOPIC_STATUS, Order::NONE, get_timestamp(), "");
+    std::string serialized = message.serialize();
+    zmq::message_t request(serialized.data(), serialized.size());
+    socket_.send(request, zmq::send_flags::none);
+
+    zmq::pollitem_t items[] = {{socket_, 0, ZMQ_POLLIN, 0}};
+    logger_->info("Waiting for reply from server for get_topic_status on topic: {}", topic);
+    zmq::poll(&items[0], 1, timeout_s * 1000);
+    logger_->info("Done polling for get_topic_status on topic: {}", topic);
+    if (items[0].revents & ZMQ_POLLIN)
+    {
+        zmq::message_t reply;
+        socket_.recv(reply);
+        RMQMessage reply_message(std::string(reply.data<char>(), reply.data<char>() + reply.size()));
+        if (reply_message.cmd() == CmdType::GET_TOPIC_STATUS)
+        {
+            return std::stoi(reply_message.data_str());
+        }
+        else
+        {
+            throw std::runtime_error("Invalid command type: " + std::to_string(static_cast<int>(reply_message.cmd())) +
+                                     " for get_topic_status on topic: " + topic);
+        }
+    }
+
+    return -2;
+}
+
 pybind11::tuple RMQClient::peek_data(const std::string &topic, std::string order, int32_t n)
 {
     std::string data_str = int32_to_bytes(n);
@@ -50,6 +80,36 @@ pybind11::tuple RMQClient::pop_data(const std::string &topic, std::string order,
     return ptrs_to_tuple_(reply_ptrs);
 }
 
+void RMQClient::put_data(const std::string &topic, const PyBytes &data)
+{
+    std::vector<TimedPtr> timed_ptrs;
+    if (pybind11::isinstance<PyBytes>(data))
+    {
+        PyBytesPtr data_ptr = std::make_shared<PyBytes>(pybind11::cast<PyBytes>(data));
+        TimedPtr timed_ptr = std::make_tuple(data_ptr, get_timestamp());
+        timed_ptrs.push_back(timed_ptr);
+    }
+    else
+    {
+        throw std::invalid_argument("Expected a PyBytes object, but received " + std::string(typeid(data).name()));
+    }
+    RMQMessage message(topic, CmdType::PUT_DATA, Order::NONE, get_timestamp(), timed_ptrs);
+    std::vector<TimedPtr> reply_ptrs = send_request_(message);
+    if (reply_ptrs.empty())
+    {
+        logger_->error("No response from server for put data on topic: {}", topic);
+    }
+    if (reply_ptrs.size() != 1)
+    {
+        throw std::runtime_error("Expected 1 reply pointer, but received " + std::to_string(reply_ptrs.size()));
+    }
+    std::string reply_str = std::get<0>(reply_ptrs[0])->str();
+    if (reply_str != "OK")
+    {
+        logger_->error("Server returned error: {}", reply_str);
+    }
+}
+
 PyBytes RMQClient::request_with_data(const std::string &topic, const PyBytes &data)
 {
     std::vector<TimedPtr> timed_ptrs;
@@ -63,7 +123,7 @@ PyBytes RMQClient::request_with_data(const std::string &topic, const PyBytes &da
     {
         throw std::invalid_argument("Expected a PyBytes object, but received " + std::string(typeid(data).name()));
     }
-    RMQMessage message(topic, CmdType::REQUEST_WITH_DATA, Order::EARLIEST, get_timestamp(), timed_ptrs);
+    RMQMessage message(topic, CmdType::REQUEST_WITH_DATA, Order::NONE, get_timestamp(), timed_ptrs);
     std::vector<TimedPtr> reply_ptrs = send_request_(message);
     if (reply_ptrs.empty())
     {
@@ -108,7 +168,6 @@ void RMQClient::reset_start_time(int64_t system_time_us)
 
 std::vector<TimedPtr> RMQClient::send_request_(RMQMessage &message)
 {
-    std::vector<TimedPtr> reply_ptrs;
     std::string serialized = message.serialize();
     zmq::message_t request(serialized.data(), serialized.size());
     socket_.send(request, zmq::send_flags::none);
