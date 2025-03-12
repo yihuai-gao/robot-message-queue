@@ -13,7 +13,6 @@ from .core.robotmq_core import (
 )
 from .utils import serialize_numpy, deserialize_numpy
 
-__version__ = "0.1.0"
 
 __all__ = [
     "RMQClient",

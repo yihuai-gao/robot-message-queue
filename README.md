@@ -23,6 +23,14 @@
 
 ## Installation
 
+The prebuilt wheels for Linux x86_64 are available on [pypi](https://pypi.org/project/robotmq/). 
+
+```bash
+pip install robotmq
+```
+
+Currently the package only works under Python 3.8-3.11. For other platforms or python versions, you can manually build the package in a conda environment. Note that Python 3.12 is not supported due to some unknown issues (core dump without any error message).
+
 ```bash
 # It is recommended to install all C++ dependencies into your conda environment
 conda install spdlog cppzmq zeromq boost pybind11 -y
@@ -42,9 +50,9 @@ pip install .
 ## Examples
 
 ```bash
-# To run the examples in this repo, it is required to install in an editable way (with -e option).
+# If you are not installing the prebuild wheels, it is required to install the package in an editable way (with -e option).
 # Otherwise python interpreter will only check robotmq/core and cannot find the compiled .so file
-pip install -e .[examples] 
+# pip install -e .
 python examples/test_communication.py
 
 # Run the server and client in different terminals
