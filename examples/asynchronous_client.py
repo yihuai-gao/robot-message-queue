@@ -12,10 +12,6 @@ import numpy as np
 import numpy.typing as npt
 
 from robotmq.utils import deserialize_numpy
-import os
-import sys
-
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 class TestClass:  # This class can be defined in client's environment as well (if cannot be imported from server)
