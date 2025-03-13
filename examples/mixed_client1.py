@@ -37,18 +37,27 @@ def test_mixed_client1():
             "obs": np.random.randn(10),
         }
         obs_data_bytes = serialize_numpy(obs_data)
+        start_time = time.time()
         action_data = client.request_with_data("policy_inference", obs_data_bytes)
-        action_data = deserialize_numpy(action_data)
-        assert isinstance(action_data, dict)
-        print(f"Received action, shape: {action_data['action'].shape}")
-        result_data = {
-            "ckpt_name": action_data["ckpt_name"],
-            "result": np.random.randn(1),
-        }
-        result_data_bytes = serialize_numpy(result_data)
-        client.put_data("result", result_data_bytes)
+        if action_data:
+            action_data = deserialize_numpy(action_data)
+            assert isinstance(action_data, dict)
+            print(
+                f"Received action, shape: {action_data['action'].shape}, time spent: {time.time() - start_time}"
+            )
 
-        time.sleep(1)
+            # Simulate env rollout
+            time.sleep(0.2)
+            result_data = {
+                "ckpt_name": action_data["ckpt_name"],
+                "result": np.random.randn(1),
+            }
+            result_data_bytes = serialize_numpy(result_data)
+            start_time = time.time()
+            client.put_data("result", result_data_bytes)
+            print(f"Put result, time spent: {time.time() - start_time}")
+        else:
+            time.sleep(1)
 
 
 if __name__ == "__main__":

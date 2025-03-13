@@ -34,20 +34,20 @@ def test_mixed_server():
                 assert isinstance(ckpt_name, str)
                 print(f"Received ckpt_name: {ckpt_name}")
                 # Simulate loading ckpt
-            if not ckpt_name:
-                time.sleep(1)
-                print("No ckpt_name received")
-                continue
 
             request_data, request_topic = server.wait_for_request(1.0)
             if request_topic:
                 obs_data = deserialize_numpy(request_data)
-                # Simulate policy inference
-                action = {
-                    "action": np.random.randn(10),
-                    "ckpt_name": ckpt_name,
-                }
-                result_data = serialize_numpy(action)
+                if ckpt_name:
+                    # Simulate policy inference
+                    time.sleep(0.2)
+                    action = {
+                        "action": np.random.randn(10),
+                        "ckpt_name": ckpt_name,
+                    }
+                    result_data = serialize_numpy(action)
+                else:
+                    result_data = b""
                 server.reply_request(request_topic, result_data)
 
             # result_data_list, _ = server.peek_data("result", "latest", 1)

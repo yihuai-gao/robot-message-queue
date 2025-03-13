@@ -24,7 +24,7 @@ def test_mixed_client1():
 
     while True:
         while True:
-            status = client.get_topic_status("ckpt_name", 0.1)
+            status = client.get_topic_status("ckpt_name", 0.5)
             if status == -2:
                 print("Server does not exist")
             elif status == -1:
@@ -34,9 +34,11 @@ def test_mixed_client1():
             time.sleep(1)
         ckpt_name = f"ckpt_{np.random.randint(0, 10)}"
         ckpt_name_bytes = serialize_numpy(ckpt_name)
+        start_time = time.time()
         client.put_data("ckpt_name", ckpt_name_bytes)
-        print(f"Put ckpt_name: {ckpt_name}")
+        print(f"Put ckpt_name: {ckpt_name}, time spent: {time.time() - start_time}")
 
+        start_time = time.time()
         result_data_list, _ = client.pop_data("result", "latest", -1)
         if result_data_list:
             for result_data in result_data_list:

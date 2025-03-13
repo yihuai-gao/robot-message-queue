@@ -67,7 +67,7 @@ python examples/asynchronous_client.py # in terminal B
 python examples/syncronous_server.py # in terminal A
 python examples/syncronous_client.py # in terminal B
 
-# Mixed communication (It may not work if you first start the two clients then the server.)
+# Mixed communication (One clinet may not connect to the server if the server is not responding to synchronous request from another client.)
 python examples/mixed_server.py # in terminal A
 python examples/mixed_client1.py # in terminal B
 python examples/mixed_client2.py # in terminal C
