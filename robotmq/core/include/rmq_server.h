@@ -25,7 +25,7 @@ class RMQServer
   public:
     RMQServer(const std::string &server_name, const std::string &server_endpoint);
     ~RMQServer();
-    void add_topic(const std::string &topic, double max_remaining_time);
+    void add_topic(const std::string &topic, double message_remaining_time_s);
     void put_data(const std::string &topic, const PyBytes &data);
     pybind11::tuple peek_data(const std::string &topic, std::string order_str, int n);
     pybind11::tuple pop_data(const std::string &topic, std::string order_str, int n);

@@ -58,5 +58,5 @@ def _deserialize_numpy(data: Any):
         raise ValueError(f"Unsupported type: {type(data)}")
 
 
-def deserialize_numpy(data: bytes):
+def deserialize_numpy(data: bytes) -> Any:
     return _deserialize_numpy(pickle.loads(data))

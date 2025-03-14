@@ -49,7 +49,7 @@ RMQServer::~RMQServer()
     context_.close();
 }
 
-void RMQServer::add_topic(const std::string &topic, double max_remaining_time)
+void RMQServer::add_topic(const std::string &topic, double message_remaining_time_s)
 {
     std::lock_guard<std::mutex> lock(data_topic_mutex_);
     auto it = data_topics_.find(topic);
@@ -58,8 +58,8 @@ void RMQServer::add_topic(const std::string &topic, double max_remaining_time)
         logger_->warn("Topic `{}` already exists. Ignoring the request to add it again.", topic);
         return;
     }
-    data_topics_.insert({topic, DataTopic(topic, max_remaining_time)});
-    logger_->info("Added topic `{}` with max remaining time {}s.", topic, max_remaining_time);
+    data_topics_.insert({topic, DataTopic(topic, message_remaining_time_s)});
+    logger_->info("Added topic `{}` with max remaining time {}s.", topic, message_remaining_time_s);
 }
 
 void RMQServer::put_data(const std::string &topic, const PyBytes &data)
@@ -236,7 +236,7 @@ bool RMQServer::exists_topic_(const std::string &topic)
 void RMQServer::process_request_(RMQMessage &message)
 {
     // Check if the topic is already in the data_topics_
-    if (!exists_topic_(message.topic()))
+    if (!exists_topic_(message.topic()) && message.cmd() != CmdType::GET_TOPIC_STATUS)
     {
         std::string error_message =
             "Topic `" + message.topic() + "` not found. Please first call add_topic to add it into the server topics.";

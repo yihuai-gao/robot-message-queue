@@ -13,7 +13,7 @@
 class DataTopic
 {
   public:
-    DataTopic(const std::string &topic_name, double max_remaining_time);
+    DataTopic(const std::string &topic_name, double message_remaining_time_s);
 
     void add_data_ptr(const PyBytesPtr data_ptr, double timestamp);
 
@@ -25,6 +25,6 @@ class DataTopic
 
   private:
     std::string topic_name_;
-    double max_remaining_time_;
+    double message_remaining_time_s_;
     std::deque<TimedPtr> data_;
 };

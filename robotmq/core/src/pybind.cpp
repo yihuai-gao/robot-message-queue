@@ -40,7 +40,7 @@ PYBIND11_MODULE(robotmq_core, m)
 
     py::class_<RMQServer>(m, "RMQServer")
         .def(py::init<const std::string &, const std::string &>(), py::arg("server_name"), py::arg("server_endpoint"))
-        .def("add_topic", &RMQServer::add_topic, py::arg("topic"), py::arg("max_remaining_time"))
+        .def("add_topic", &RMQServer::add_topic, py::arg("topic"), py::arg("message_remaining_time_s"))
         .def("put_data", &RMQServer::put_data, py::arg("topic"), py::arg("data"))
         .def("peek_data", &RMQServer::peek_data, py::arg("topic"), py::arg("order"), py::arg("n"))
         .def("pop_data", &RMQServer::pop_data, py::arg("topic"), py::arg("order"), py::arg("n"))

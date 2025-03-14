@@ -7,8 +7,8 @@
 
 #include "data_topic.h"
 
-DataTopic::DataTopic(const std::string &topic_name, double max_remaining_time)
-    : max_remaining_time_(max_remaining_time), topic_name_(topic_name)
+DataTopic::DataTopic(const std::string &topic_name, double message_remaining_time_s)
+    : message_remaining_time_s_(message_remaining_time_s), topic_name_(topic_name)
 {
     data_.clear();
 }
@@ -16,7 +16,7 @@ DataTopic::DataTopic(const std::string &topic_name, double max_remaining_time)
 void DataTopic::add_data_ptr(const PyBytesPtr data_ptr, double timestamp)
 {
     data_.push_back({data_ptr, timestamp});
-    while (!data_.empty() && timestamp - std::get<1>(data_.front()) > max_remaining_time_)
+    while (!data_.empty() && timestamp - std::get<1>(data_.front()) > message_remaining_time_s_)
     {
         data_.pop_front();
     }
