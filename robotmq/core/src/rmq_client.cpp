@@ -89,6 +89,10 @@ pybind11::tuple RMQClient::pop_data(const std::string &topic, std::string order,
 
 void RMQClient::put_data(const std::string &topic, const PyBytes &data)
 {
+    if (data.equal(PyBytes("")))
+    {
+        throw std::invalid_argument("Cannot pass empty bytes string");
+    }
     std::vector<TimedPtr> timed_ptrs;
     if (pybind11::isinstance<PyBytes>(data))
     {
@@ -106,6 +110,10 @@ void RMQClient::put_data(const std::string &topic, const PyBytes &data)
 
 PyBytes RMQClient::request_with_data(const std::string &topic, const PyBytes &data)
 {
+    if (data.equal(PyBytes("")))
+    {
+        throw std::invalid_argument("Cannot pass empty bytes string");
+    }
     std::vector<TimedPtr> timed_ptrs;
     if (pybind11::isinstance<PyBytes>(data))
     {

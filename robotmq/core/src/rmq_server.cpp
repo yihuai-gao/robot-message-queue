@@ -64,6 +64,10 @@ void RMQServer::add_topic(const std::string &topic, double message_remaining_tim
 
 void RMQServer::put_data(const std::string &topic, const PyBytes &data)
 {
+    if (data.equal(PyBytes("")))
+    {
+        throw std::invalid_argument("Cannot pass empty bytes string");
+    }
     std::lock_guard<std::mutex> lock(data_topic_mutex_);
     auto it = data_topics_.find(topic);
     if (it == data_topics_.end())
@@ -253,7 +257,7 @@ void RMQServer::process_request_(RMQMessage &message)
         std::string error_message = "";
         if (message.order() == Order::NONE)
         {
-            error_message.append("End type cannot be NONE for PEEK_DATA command. ");
+            error_message.append("Order type cannot be NONE for PEEK_DATA and POP_DATA commands. ");
         }
         if (message.data_str().length() != sizeof(int32_t))
         {
