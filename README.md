@@ -13,7 +13,6 @@
 - C++ multi-threading supports fully asynchronous data manipulation without taking up Python main thread
 - ZMQ as the communication backend, supports both tcp and ipc (inter-process communication), ~200 MB/s locally and ~20 MB/s over the network
 - No restriction to data type, as long as it can be serialized to bytes (`pickle.dumps()` for arbitrary data or `robotmq.utils.serialize_numpy()` for nested list/dict/tuple of numpy arrays)
-- Python bindings with minimal data transfer overhead (only copy once before sending and receiving)
 - TODO: for the same physical machine, implement shared memory for faster communication
 
 ## Use Cases
@@ -28,8 +27,6 @@ The prebuilt wheels for Linux x86_64 are available on [pypi](https://pypi.org/pr
 ```bash
 pip install robotmq
 ```
-
-Currently the package works under Python 3.7-3.11 and 3.13. For other platforms or python versions, you can manually build the package in a conda environment. Python 3.12 is not supported due to some unknown issues (core dump without any error messages).
 
 ```bash
 # It is recommended to install all C++ dependencies into your conda environment
@@ -49,7 +46,7 @@ pip install .
 
 ## Examples
 
-You can run the server and client in **different Python environments**, even in different **Python versions** (except for Python 3.12).
+You can run the server and client in **different Python environments**, even in different **Python versions**.
 
 ```bash
 # If you are not installing the prebuild wheels, it is required to install the package in an editable way (with -e option).

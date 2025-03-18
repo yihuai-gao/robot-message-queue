@@ -15,7 +15,7 @@ class DataTopic
   public:
     DataTopic(const std::string &topic_name, double message_remaining_time_s);
 
-    void add_data_ptr(const PyBytesPtr data_ptr, double timestamp);
+    void add_data_ptr(const BytesPtr data_ptr, double timestamp);
 
     std::vector<TimedPtr> peek_data_ptrs(Order order, int32_t n);
     std::vector<TimedPtr> pop_data_ptrs(Order order, int32_t n);

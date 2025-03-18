@@ -28,9 +28,9 @@ class RMQClient
     // positive number means the number of data in the topic
     pybind11::tuple peek_data(const std::string &topic, std::string order, int32_t n);
     pybind11::tuple pop_data(const std::string &topic, std::string order, int32_t n);
-    void put_data(const std::string &topic, const PyBytes &data);
+    void put_data(const std::string &topic, const Bytes &data);
     pybind11::tuple get_last_retrieved_data();
-    PyBytes request_with_data(const std::string &topic, const PyBytes &data);
+    pybind11::bytes request_with_data(const std::string &topic, const Bytes &data);
 
     double get_timestamp();
     void reset_start_time(int64_t system_time_us);

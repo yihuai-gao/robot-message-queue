@@ -16,11 +16,6 @@
 
 namespace py = pybind11;
 
-PyBytesPtr bytes_to_shared_string(py::bytes py_bytes)
-{
-    return std::make_shared<py::bytes>(py_bytes);
-}
-
 PYBIND11_MODULE(robotmq_core, m)
 {
 

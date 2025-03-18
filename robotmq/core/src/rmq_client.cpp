@@ -87,44 +87,32 @@ pybind11::tuple RMQClient::pop_data(const std::string &topic, std::string order,
     return ptrs_to_tuple_(reply_ptrs);
 }
 
-void RMQClient::put_data(const std::string &topic, const PyBytes &data)
+void RMQClient::put_data(const std::string &topic, const Bytes &data)
 {
-    if (data.equal(PyBytes("")))
+    if (data.empty())
     {
         throw std::invalid_argument("Cannot pass empty bytes string");
     }
     std::vector<TimedPtr> timed_ptrs;
-    if (pybind11::isinstance<PyBytes>(data))
-    {
-        PyBytesPtr data_ptr = std::make_shared<PyBytes>(pybind11::cast<PyBytes>(data));
-        TimedPtr timed_ptr = std::make_tuple(data_ptr, get_timestamp());
-        timed_ptrs.push_back(timed_ptr);
-    }
-    else
-    {
-        throw std::invalid_argument("Expected a PyBytes object, but received " + std::string(typeid(data).name()));
-    }
+    BytesPtr data_ptr = std::make_shared<Bytes>(data);
+    TimedPtr timed_ptr = std::make_tuple(data_ptr, get_timestamp());
+    timed_ptrs.push_back(timed_ptr);
     RMQMessage message(topic, CmdType::PUT_DATA, Order::NONE, get_timestamp(), timed_ptrs);
     std::vector<TimedPtr> reply_ptrs = send_request_(message);
 }
 
-PyBytes RMQClient::request_with_data(const std::string &topic, const PyBytes &data)
+pybind11::bytes RMQClient::request_with_data(const std::string &topic, const Bytes &data)
 {
-    if (data.equal(PyBytes("")))
+    if (data.empty())
     {
         throw std::invalid_argument("Cannot pass empty bytes string");
     }
     std::vector<TimedPtr> timed_ptrs;
-    if (pybind11::isinstance<PyBytes>(data))
-    {
-        PyBytesPtr data_ptr = std::make_shared<PyBytes>(pybind11::cast<PyBytes>(data));
-        TimedPtr timed_ptr = std::make_tuple(data_ptr, get_timestamp());
-        timed_ptrs.push_back(timed_ptr);
-    }
-    else
-    {
-        throw std::invalid_argument("Expected a PyBytes object, but received " + std::string(typeid(data).name()));
-    }
+
+    BytesPtr data_ptr = std::make_shared<Bytes>(data);
+    TimedPtr timed_ptr = std::make_tuple(data_ptr, get_timestamp());
+    timed_ptrs.push_back(timed_ptr);
+
     RMQMessage message(topic, CmdType::REQUEST_WITH_DATA, Order::NONE, get_timestamp(), timed_ptrs);
     std::vector<TimedPtr> reply_ptrs = send_request_(message);
     if (reply_ptrs.empty())
@@ -135,8 +123,8 @@ PyBytes RMQClient::request_with_data(const std::string &topic, const PyBytes &da
     {
         throw std::runtime_error("Expected 1 reply pointer, but received " + std::to_string(reply_ptrs.size()));
     }
-    PyBytesPtr data_ptr = std::get<0>(reply_ptrs[0]);
-    return *data_ptr;
+    BytesPtr reply_data_ptr = std::get<0>(reply_ptrs[0]);
+    return pybind11::bytes(*reply_data_ptr);
 }
 
 pybind11::tuple RMQClient::get_last_retrieved_data()
@@ -150,7 +138,7 @@ pybind11::tuple RMQClient::ptrs_to_tuple_(const std::vector<TimedPtr> &ptrs)
     pybind11::list timestamps;
     for (const TimedPtr ptr : ptrs)
     {
-        data.append(*std::get<0>(ptr));
+        data.append(pybind11::bytes(*std::get<0>(ptr)));
         timestamps.append(std::get<1>(ptr));
     }
     return pybind11::make_tuple(data, timestamps);

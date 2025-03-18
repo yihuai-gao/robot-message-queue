@@ -13,7 +13,7 @@ DataTopic::DataTopic(const std::string &topic_name, double message_remaining_tim
     data_.clear();
 }
 
-void DataTopic::add_data_ptr(const PyBytesPtr data_ptr, double timestamp)
+void DataTopic::add_data_ptr(const BytesPtr data_ptr, double timestamp)
 {
     data_.push_back({data_ptr, timestamp});
     while (!data_.empty() && timestamp - std::get<1>(data_.front()) > message_remaining_time_s_)

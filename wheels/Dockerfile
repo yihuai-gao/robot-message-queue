@@ -59,7 +59,7 @@ RUN yum install -y tmux
 RUN cd robot-message-queue && \
     set -e && \
     # There are unknown bugs in cp312 (core dump)
-    for PYTHON_VERSION in cp37-cp37m cp38-cp38 cp39-cp39 cp310-cp310 cp311-cp311 cp313-cp313; do \
+    for PYTHON_VERSION in cp37-cp37m cp38-cp38 cp39-cp39 cp310-cp310 cp311-cp311 cp312-cp312 cp313-cp313; do \
     /opt/python/${PYTHON_VERSION}/bin/python -m venv ${PYTHON_VERSION} && \
     source ${PYTHON_VERSION}/bin/activate && \
     pip install pybind11 && \

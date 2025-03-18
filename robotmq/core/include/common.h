@@ -15,10 +15,11 @@
 
 #include <iomanip>
 #include <sstream>
-using PyBytes = pybind11::bytes;
-using PyBytesPtr = std::shared_ptr<pybind11::bytes>;
-
-using TimedPtr = std::tuple<PyBytesPtr, double>;
+// using Bytes = pybind11::bytes;
+// using BytesPtr = std::shared_ptr<pybind11::bytes>;
+using Bytes = std::string;
+using BytesPtr = std::shared_ptr<std::string>;
+using TimedPtr = std::tuple<BytesPtr, double>;
 int64_t steady_clock_us();
 int64_t system_clock_us();
 

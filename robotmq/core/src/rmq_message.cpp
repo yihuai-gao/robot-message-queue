@@ -105,7 +105,7 @@ void RMQMessage::encode_data_blocks_()
     std::vector<double> timestamps;
     for (const auto &data_ptr : data_ptrs_)
     {
-        int data_length = pybind11::len(*std::get<0>(data_ptr));
+        int data_length = std::get<0>(data_ptr)->size();
         data_string_length += data_length + sizeof(uint32_t) + sizeof(double);
         data_lengths.push_back(data_length);
         timestamps.push_back(std::get<1>(data_ptr));
@@ -155,11 +155,11 @@ void RMQMessage::decode_data_blocks_()
         double timestamp = bytes_to_double(data_timestamp_str);
         if (data_length == 0)
         {
-            data_ptrs_.push_back(std::make_tuple(std::make_shared<PyBytes>(PyBytes("")), timestamp));
+            data_ptrs_.push_back(std::make_tuple(std::make_shared<Bytes>(Bytes("")), timestamp));
             continue;
         }
         data_ptrs_.push_back(std::make_tuple(
-            std::make_shared<PyBytes>(PyBytes(data_str_.data() + data_start_index, data_length)), timestamp));
+            std::make_shared<Bytes>(Bytes(data_str_.data() + data_start_index, data_length)), timestamp));
         data_start_index += data_length;
     }
 }

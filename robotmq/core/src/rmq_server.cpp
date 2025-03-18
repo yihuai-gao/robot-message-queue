@@ -62,9 +62,9 @@ void RMQServer::add_topic(const std::string &topic, double message_remaining_tim
     logger_->info("Added topic `{}` with max remaining time {}s.", topic, message_remaining_time_s);
 }
 
-void RMQServer::put_data(const std::string &topic, const PyBytes &data)
+void RMQServer::put_data(const std::string &topic, const Bytes &data)
 {
-    if (data.equal(PyBytes("")))
+    if (data.empty())
     {
         throw std::invalid_argument("Cannot pass empty bytes string");
     }
@@ -77,8 +77,8 @@ void RMQServer::put_data(const std::string &topic, const PyBytes &data)
             topic);
         return;
     }
-    PyBytesPtr data_ptr = std::make_shared<PyBytes>(data);
 
+    BytesPtr data_ptr = std::make_shared<Bytes>(data);
     it->second.add_data_ptr(data_ptr, get_timestamp());
 }
 
@@ -90,7 +90,7 @@ pybind11::tuple RMQServer::peek_data(const std::string &topic, std::string order
     pybind11::list timestamps;
     for (const TimedPtr ptr : ptrs)
     {
-        data.append(*std::get<0>(ptr));
+        data.append(pybind11::bytes(*std::get<0>(ptr)));
         timestamps.append(std::get<1>(ptr));
     }
     return pybind11::make_tuple(data, timestamps);
@@ -104,7 +104,7 @@ pybind11::tuple RMQServer::pop_data(const std::string &topic, std::string order_
     pybind11::list timestamps;
     for (const TimedPtr ptr : ptrs)
     {
-        data.append(*std::get<0>(ptr));
+        data.append(pybind11::bytes(*std::get<0>(ptr)));
         timestamps.append(std::get<1>(ptr));
     }
     return pybind11::make_tuple(data, timestamps);
@@ -130,7 +130,7 @@ pybind11::tuple RMQServer::wait_for_request(double timeout_s)
                 if (ptrs.size() == 0)
                 {
                     logger_->error("Failed to pop data from topic {}. Please check if the topic is added.", topic);
-                    return pybind11::make_tuple(PyBytes(), pybind11::str(topic));
+                    return pybind11::make_tuple(pybind11::bytes(), pybind11::str(topic));
                 }
                 else if (ptrs.size() > 1)
                 {
@@ -138,9 +138,9 @@ pybind11::tuple RMQServer::wait_for_request(double timeout_s)
                                    topic);
                 }
                 // Clear the queue and return the latest data
-                PyBytes data = *std::get<0>(ptrs[0]);
+                Bytes data = *std::get<0>(ptrs[0]);
                 ptrs.clear();
-                return pybind11::make_tuple(data, pybind11::str(topic));
+                return pybind11::make_tuple(pybind11::bytes(data), pybind11::str(topic));
             }
         }
     }
@@ -148,7 +148,7 @@ pybind11::tuple RMQServer::wait_for_request(double timeout_s)
     return pybind11::make_tuple(pybind11::bytes(), pybind11::str(""));
 }
 
-void RMQServer::reply_request(const std::string &topic, const pybind11::bytes &data)
+void RMQServer::reply_request(const std::string &topic, const Bytes &data)
 {
     put_data(topic, data);
     {
@@ -366,9 +366,7 @@ void RMQServer::background_loop_()
 {
     while (running_)
     {
-
         zmq::poll(&poller_item_, 1, poller_timeout_ms_.count());
-
         zmq::message_t request;
         if (poller_item_.revents & ZMQ_POLLIN)
         {
