@@ -2,6 +2,7 @@ FROM quay.io/pypa/manylinux_2_28_x86_64:latest
 
 WORKDIR /root
 
+
 RUN git clone https://github.com/jedisct1/libsodium.git && \
     cd libsodium && git checkout 1.0.20-RELEASE && \
     ./autogen.sh && \
@@ -42,6 +43,10 @@ RUN git clone https://github.com/gabime/spdlog.git && \
     cmake .. && \
     make -j && \
     make install
+
+ARG ROBOTMQ_COMMIT
+
+RUN echo "ROBOTMQ_COMMIT: $ROBOTMQ_COMMIT"
 
 RUN git clone https://github.com/yihuai-gao/robot-message-queue.git && \
     cd robot-message-queue && \
