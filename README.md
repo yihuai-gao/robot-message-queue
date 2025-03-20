@@ -28,6 +28,8 @@ The prebuilt wheels for Linux x86_64 are available on [pypi](https://pypi.org/pr
 pip install robotmq
 ```
 
+If you want to run this library on other platforms, you can clone this repository and build from scratch:
+
 ```bash
 # It is recommended to install all C++ dependencies into your conda environment
 conda install spdlog cppzmq zeromq boost pybind11 -y
