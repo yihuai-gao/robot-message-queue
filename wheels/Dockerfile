@@ -15,7 +15,7 @@ RUN git clone https://github.com/zeromq/libzmq.git && \
     cd libzmq && git checkout v4.3.5 && \
     mkdir build && \
     cd build && \
-    cmake .. && \
+    cmake .. -DCMAKE_POLICY_VERSION_MINIMUM=3.5&& \
     make -j && \
     make install
 

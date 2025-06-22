@@ -1,5 +1,5 @@
 #! /bin/bash
-
+set -e
 root_dir=$(dirname $(dirname $(realpath $0)))
 
 cd $root_dir
