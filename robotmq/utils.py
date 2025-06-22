@@ -4,13 +4,13 @@ import pickle
 from typing import Any, Dict, List, Tuple, Union
 
 
-def _serialize_numpy(data: Any):
+def _serialize(data: Any):
     if isinstance(data, dict):
-        return {key: _serialize_numpy(value) for key, value in data.items()}
+        return {key: _serialize(value) for key, value in data.items()}
     elif isinstance(data, list):
-        return [_serialize_numpy(item) for item in data]
+        return [_serialize(item) for item in data]
     elif isinstance(data, tuple):
-        return tuple(_serialize_numpy(item) for item in data)
+        return tuple(_serialize(item) for item in data)
     elif isinstance(data, np.ndarray):
         return (data.data.tobytes(), data.dtype.str, data.shape)
     elif (
@@ -25,15 +25,15 @@ def _serialize_numpy(data: Any):
         raise ValueError(f"Unsupported type: {type(data)}")
 
 
-def serialize_numpy(data: Any) -> bytes:
-    return pickle.dumps(_serialize_numpy(data))
+def serialize(data: Any) -> bytes:
+    return pickle.dumps(_serialize(data))
 
 
-def _deserialize_numpy(data: Any):
+def _deserialize(data: Any):
     if isinstance(data, dict):
-        return {key: _deserialize_numpy(value) for key, value in data.items()}
+        return {key: _deserialize(value) for key, value in data.items()}
     elif isinstance(data, list):
-        return [_deserialize_numpy(item) for item in data]
+        return [_deserialize(item) for item in data]
     elif isinstance(data, tuple):
         if (
             len(data) == 3
@@ -45,7 +45,7 @@ def _deserialize_numpy(data: Any):
                 return np.frombuffer(data[0], dtype=data[1]).reshape(data[2]).copy()
             except Exception as e:
                 pass
-        return tuple(_deserialize_numpy(item) for item in data)
+        return tuple(_deserialize(item) for item in data)
     elif (
         isinstance(data, bytes)
         or isinstance(data, str)
@@ -58,5 +58,5 @@ def _deserialize_numpy(data: Any):
         raise ValueError(f"Unsupported type: {type(data)}")
 
 
-def deserialize_numpy(data: bytes) -> Any:
-    return _deserialize_numpy(pickle.loads(data))
+def deserialize(data: bytes) -> Any:
+    return _deserialize(pickle.loads(data))

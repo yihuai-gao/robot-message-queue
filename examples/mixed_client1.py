@@ -11,7 +11,7 @@ import numpy as np
 import numpy.typing as npt
 
 from robotmq.core.robotmq_core import RMQClient
-from robotmq.utils import deserialize_numpy, serialize_numpy
+from robotmq.utils import deserialize, serialize
 import pickle
 
 
@@ -36,11 +36,11 @@ def test_mixed_client1():
         obs_data = {
             "obs": np.random.randn(10),
         }
-        obs_data_bytes = serialize_numpy(obs_data)
+        obs_data_bytes = serialize(obs_data)
         start_time = time.time()
         action_data = client.request_with_data("policy_inference", obs_data_bytes)
         if action_data:
-            action_data = deserialize_numpy(action_data)
+            action_data = deserialize(action_data)
             assert isinstance(action_data, dict)
             print(
                 f"Received action, shape: {action_data['action'].shape}, time spent: {time.time() - start_time}"
@@ -52,7 +52,7 @@ def test_mixed_client1():
                 "ckpt_name": action_data["ckpt_name"],
                 "result": np.random.randn(1),
             }
-            result_data_bytes = serialize_numpy(result_data)
+            result_data_bytes = serialize(result_data)
             start_time = time.time()
             client.put_data("result", result_data_bytes)
             print(f"Put result, time spent: {time.time() - start_time}")

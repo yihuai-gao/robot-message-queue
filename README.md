@@ -12,7 +12,7 @@
 
 - C++ multi-threading supports fully asynchronous data manipulation without taking up Python main thread
 - ZMQ as the communication backend, supports both tcp and ipc (inter-process communication), ~200 MB/s locally and ~20 MB/s over the network
-- No restriction to data type, as long as it can be serialized to bytes (`pickle.dumps()` for arbitrary data or `robotmq.utils.serialize_numpy()` for nested list/dict/tuple of numpy arrays)
+- No restriction to data type, as long as it can be serialized to bytes (`pickle.dumps()` for arbitrary data or `robotmq.utils.serialize()` for nested list/dict/tuple of numpy arrays)
 - TODO: for the same physical machine, implement shared memory for faster communication
 
 ## Use Cases
@@ -73,6 +73,6 @@ python examples/mixed_client2.py # in terminal C
 ```
 
 ## Troubleshooting
-- If you encounter numpy errors (related to `numpy._core`), this usually happens if you call `pickle.dumps()` and `pickle.loads()` to a struct containing numpy arrays, and you have different numpy versions in the server and client python environments. To handle this, instead of using `pickle.dumps()`, you can call `robotmq.utils.serialize_numpy()` to serialize any nested (arbitrarily deep) list/dict/tuple of numpy arrays or other regular types (int/float/str/bytes). This function will use the `tobytes()` method of numpy arrays, thus will not lead any numpy version problems.
+- If you encounter numpy errors (related to `numpy._core`), this usually happens if you call `pickle.dumps()` and `pickle.loads()` to a struct containing numpy arrays, and you have different numpy versions in the server and client python environments. To handle this, instead of using `pickle.dumps()`, you can call `robotmq.utils.serialize()` to serialize any nested (arbitrarily deep) list/dict/tuple of numpy arrays or other regular types (int/float/str/bytes). This function will use the `tobytes()` method of numpy arrays, thus will not lead any numpy version problems.
 
 - `get_topic_status` is the only client function that support disconnection detection. For all the other client functions, if the server is not created, the client will be blocked forever. However, one should not call `get_topic_status` too frequently, as it will close and recreate a socket connection every time if the server is not responding. Due to some unknown issues, the files descriptor of the socket is not properly released. Therefore, if you call `get_topic_status` and get no response for more than 1024 times, it will throw an error `Too many open files`.

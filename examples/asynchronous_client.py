@@ -11,7 +11,7 @@ import time
 import numpy as np
 import numpy.typing as npt
 
-from robotmq.utils import deserialize_numpy
+from robotmq.utils import deserialize
 
 
 class TestClass:  # This class can be defined in client's environment as well (if cannot be imported from server)
@@ -47,7 +47,7 @@ def test_client():
 
         nested_data_list, timestamps = client.pop_data("test_nested_np", "earliest", 1)
         if nested_data_list:
-            nested_data = deserialize_numpy(nested_data_list[0])
+            nested_data = deserialize(nested_data_list[0])
             print(f"Received nested data: {nested_data}")
 
         pickle_data_list, timestamps = client.pop_data("test_pickle", "earliest", 1)

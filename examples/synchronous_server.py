@@ -8,7 +8,7 @@
 import robotmq
 import numpy as np
 import numpy.typing as npt
-from robotmq.utils import serialize_numpy, deserialize_numpy
+from robotmq.utils import serialize, deserialize
 import time
 def test_reply_request():
     server = robotmq.RMQServer("test_server", "tcp://*:5555")
@@ -20,11 +20,11 @@ def test_reply_request():
             if not request_topic:
                 continue
 
-            data = deserialize_numpy(request_data)
+            data = deserialize(request_data)
             assert isinstance(data, np.ndarray)
             print(data)
             data += 1.0
-            data_bytes = serialize_numpy(data)
+            data_bytes = serialize(data)
             # server.reply_request(request_topic, [data_bytes])
             server.reply_request("test_topic", data_bytes)
             print("Replied to request")

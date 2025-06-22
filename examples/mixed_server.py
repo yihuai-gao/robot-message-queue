@@ -10,7 +10,7 @@ import time
 import numpy as np
 import numpy.typing as npt
 
-from robotmq.utils import deserialize_numpy, serialize_numpy
+from robotmq.utils import deserialize, serialize
 import pickle
 
 
@@ -30,14 +30,14 @@ def test_mixed_server():
         try:
             ckpt_name_list, _ = server.pop_data("ckpt_name", "latest", 1)
             if ckpt_name_list:
-                ckpt_name = deserialize_numpy(ckpt_name_list[0])
+                ckpt_name = deserialize(ckpt_name_list[0])
                 assert isinstance(ckpt_name, str)
                 print(f"Received ckpt_name: {ckpt_name}")
                 # Simulate loading ckpt
 
             request_data, request_topic = server.wait_for_request(1.0)
             if request_topic:
-                obs_data = deserialize_numpy(request_data)
+                obs_data = deserialize(request_data)
                 if ckpt_name:
                     # Simulate policy inference
                     time.sleep(0.2)
@@ -45,14 +45,14 @@ def test_mixed_server():
                         "action": np.random.randn(10),
                         "ckpt_name": ckpt_name,
                     }
-                    result_data = serialize_numpy(action)
+                    result_data = serialize(action)
                 else:
                     result_data = b""
                 server.reply_request(request_topic, result_data)
 
             # result_data_list, _ = server.peek_data("result", "latest", 1)
             # if result_data_list:
-            #     result = deserialize_numpy(result_data_list[0])
+            #     result = deserialize(result_data_list[0])
             #     print(f"Received result: {result}")
 
         except KeyboardInterrupt:

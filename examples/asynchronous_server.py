@@ -10,7 +10,7 @@ import time
 import numpy as np
 import numpy.typing as npt
 
-from robotmq.utils import serialize_numpy
+from robotmq.utils import serialize
 import pickle
 
 
@@ -38,7 +38,7 @@ def test_server():
         # Simulates a data source that keeps getting data from the sensor at a regular interval
         server.put_data("test_raw_np", rand_data.tobytes())
 
-        serialized_data = serialize_numpy(
+        serialized_data = serialize(
             {
                 "data": rand_data,
                 "tag": "test_nested_np",

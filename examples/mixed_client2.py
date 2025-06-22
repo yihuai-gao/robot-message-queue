@@ -11,7 +11,7 @@ import numpy as np
 import numpy.typing as npt
 
 from robotmq.core.robotmq_core import RMQClient
-from robotmq.utils import deserialize_numpy, serialize_numpy
+from robotmq.utils import deserialize, serialize
 import pickle
 
 
@@ -33,7 +33,7 @@ def test_mixed_client1():
                 break
             time.sleep(1)
         ckpt_name = f"ckpt_{np.random.randint(0, 10)}"
-        ckpt_name_bytes = serialize_numpy(ckpt_name)
+        ckpt_name_bytes = serialize(ckpt_name)
         start_time = time.time()
         client.put_data("ckpt_name", ckpt_name_bytes)
         print(f"Put ckpt_name: {ckpt_name}, time spent: {time.time() - start_time}")
@@ -42,7 +42,7 @@ def test_mixed_client1():
         result_data_list, _ = client.pop_data("result", "latest", -1)
         if result_data_list:
             for result_data in result_data_list:
-                result = deserialize_numpy(result_data)
+                result = deserialize(result_data)
                 print(f"Received result: {result}")
 
         time.sleep(1)

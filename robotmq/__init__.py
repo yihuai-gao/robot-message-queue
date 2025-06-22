@@ -11,7 +11,7 @@ from .core.robotmq_core import (
     steady_clock_us,
     system_clock_us,
 )
-from .utils import serialize_numpy, deserialize_numpy
+from .utils import serialize, deserialize
 
 
 __all__ = [
@@ -19,6 +19,6 @@ __all__ = [
     "RMQServer",
     "steady_clock_us",
     "system_clock_us",
-    "serialize_numpy",
-    "deserialize_numpy",
+    "serialize",
+    "deserialize",
 ]
