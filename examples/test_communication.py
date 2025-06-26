@@ -1,8 +1,8 @@
 """
- Copyright (c) 2024 Yihuai Gao
- 
- This software is released under the MIT License.
- https://opensource.org/licenses/MIT
+Copyright (c) 2024 Yihuai Gao
+
+This software is released under the MIT License.
+https://opensource.org/licenses/MIT
 """
 
 import robotmq as rmq
@@ -21,29 +21,32 @@ def test_communication():
     )
     print("Server and client created")
 
-    server.add_topic("test", 10)
+    # server.add_topic("test", 10)
+    server.add_shared_memory_topic("test", 10, 1)
     rand_data_list: list[npt.NDArray[np.float64]] = []
     for k in range(10):
-        rand_data = np.random.rand(1000000).astype(np.float64)
+        rand_data = np.random.rand(10000000).astype(np.float64)
         rand_data_list.append(rand_data)
         start_time = time.time()
         # Using pickle also works, especially for arbitrary python objects
         # pickle_data = pickle.dumps(rand_data)
         dump_end_time = time.time()
-        server.put_data("test", rand_data.tobytes())
+        data_bytes = rand_data.tobytes()
+        to_bytes_end_time = time.time()
+        server.put_data("test", data_bytes)
         send_end_time = time.time()
         time.sleep(0.01)
         retrieve_start_time = time.time()
-        retrieved_data, timestamp = client.peek_data(topic="test", order="latest", n=1)
+        retrieved_data, timestamp = server.peek_data(topic="test", order="latest", n=1)
         retrieve_end_time = time.time()
         received_data = np.frombuffer(retrieved_data[0], dtype=np.float64)
         # received_data = pickle.loads(retrieved_data[0])
         print(
-            f"Data size: {rand_data.nbytes / 1024**2:.3f}MB. dump: {dump_end_time - start_time:.4f}s, send: {send_end_time - dump_end_time: .4f}s, retrieve: {retrieve_end_time - retrieve_start_time:.4f}s, load: {time.time() - retrieve_end_time:.4f}s, correctness: {np.allclose(received_data, rand_data)}"
+            f"Data size: {rand_data.nbytes / 1024**2:.3f}MB. dump: {dump_end_time - start_time:.4f}s, to_bytes: {to_bytes_end_time - dump_end_time: .4f}s, send: {send_end_time - to_bytes_end_time: .4f}s, retrieve: {retrieve_end_time - retrieve_start_time:.4f}s, load: {time.time() - retrieve_end_time:.4f}s, correctness: {np.allclose(received_data, rand_data)}"
         )
 
     start_time = time.time()
-    all_pickle_data, all_timestamps = client.peek_data(
+    all_pickle_data, all_timestamps = server.peek_data(
         topic="test", order="earliest", n=-1
     )
     request_end_time = time.time()
@@ -56,7 +59,7 @@ def test_communication():
     )
 
     start_time = time.time()
-    last_k_pickle_data, last_k_timestamps = client.peek_data(
+    last_k_pickle_data, last_k_timestamps = server.peek_data(
         topic="test", order="latest", n=5
     )
     request_end_time = time.time()

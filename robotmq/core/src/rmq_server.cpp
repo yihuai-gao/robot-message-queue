@@ -62,6 +62,15 @@ void RMQServer::add_topic(const std::string &topic, double message_remaining_tim
     logger_->info("Added topic `{}` with max remaining time {}s.", topic, message_remaining_time_s);
 }
 
+void RMQServer::add_shared_memory_topic(const std::string &topic, double message_remaining_time_s,
+                                        double shared_memory_size_gb)
+{
+    std::lock_guard<std::mutex> lock(data_topic_mutex_);
+    data_topics_.insert({topic, DataTopic(topic, message_remaining_time_s, server_name_, shared_memory_size_gb)});
+    logger_->info("Added shared memory topic `{}` with max remaining time {}s and shared memory size {}GB.", topic,
+                  message_remaining_time_s, shared_memory_size_gb);
+}
+
 void RMQServer::put_data(const std::string &topic, const Bytes &data)
 {
     if (data.empty())
@@ -88,9 +97,17 @@ pybind11::tuple RMQServer::peek_data(const std::string &topic, std::string order
     std::vector<TimedPtr> ptrs = peek_data_ptrs_(topic, order, n);
     pybind11::list data;
     pybind11::list timestamps;
+    auto it = data_topics_.find(topic);
     for (const TimedPtr ptr : ptrs)
     {
-        data.append(pybind11::bytes(*std::get<0>(ptr)));
+        if (it->second.is_shm_topic())
+        {
+            data.append(pybind11::bytes(it->second.get_shared_memory_data(*std::get<0>(ptr))));
+        }
+        else
+        {
+            data.append(pybind11::bytes(*std::get<0>(ptr)));
+        }
         timestamps.append(std::get<1>(ptr));
     }
     return pybind11::make_tuple(data, timestamps);
@@ -102,9 +119,17 @@ pybind11::tuple RMQServer::pop_data(const std::string &topic, std::string order_
     std::vector<TimedPtr> ptrs = pop_data_ptrs_(topic, order, n);
     pybind11::list data;
     pybind11::list timestamps;
+    auto it = data_topics_.find(topic);
     for (const TimedPtr ptr : ptrs)
     {
-        data.append(pybind11::bytes(*std::get<0>(ptr)));
+        if (it->second.is_shm_topic())
+        {
+            data.append(pybind11::bytes(it->second.get_shared_memory_data(*std::get<0>(ptr))));
+        }
+        else
+        {
+            data.append(pybind11::bytes(*std::get<0>(ptr)));
+        }
         timestamps.append(std::get<1>(ptr));
     }
     return pybind11::make_tuple(data, timestamps);

@@ -42,6 +42,7 @@ DataTopic::DataTopic(const std::string &topic_name, double message_remaining_tim
     // Create shared memory
     shm_size_ = shm_size_gb_ * 1024 * 1024 * 1024;
     occupied_shm_size_ = 0;
+    current_shm_offset_ = 0;
     int shm_fd = shm_open(shm_name_.c_str(), O_CREAT | O_RDWR, 0666);
     ftruncate(shm_fd, shm_size_);
     shm_ptr_ = mmap(0, shm_size_, PROT_WRITE, MAP_SHARED, shm_fd, 0);
@@ -51,12 +52,52 @@ void DataTopic::add_data_ptr(const BytesPtr data_ptr, double timestamp)
 {
     if (is_shm_topic_)
     {
+        // Store the original data into shared memory and the shm_data_info into data_
+        if (data_ptr->size() > shm_size_)
+        {
+            printf("Data size %d is larger than shared memory size %d. New data will be ignored\n", data_ptr->size(),
+                   shm_size_);
+            return;
+        }
+        BytesPtr info_ptr = std::make_shared<Bytes>(
+            SharedMemoryDataInfo(server_name_, topic_name_, shm_size_, occupied_shm_size_, data_ptr->size())
+                .serialize());
+        data_.push_back({info_ptr, timestamp});
         occupied_shm_size_ += data_ptr->size();
+        while (occupied_shm_size_ > shm_size_)
+        {
+            BytesPtr old_info_ptr = std::get<0>(data_.front());
+            SharedMemoryDataInfo old_info(old_info_ptr->data());
+            occupied_shm_size_ -= old_info.data_size_bytes();
+            data_.pop_front();
+        }
+        if (current_shm_offset_ + data_ptr->size() > shm_size_)
+        {
+            uint64_t remaining_size = shm_size_ - current_shm_offset_;
+            memcpy(shm_ptr_ + current_shm_offset_, data_ptr->data(), remaining_size);
+            current_shm_offset_ = data_ptr->size() - remaining_size;
+            memcpy(shm_ptr_, data_ptr->data() + remaining_size, current_shm_offset_);
+        }
+        else
+        {
+            memcpy(shm_ptr_ + current_shm_offset_, data_ptr->data(), data_ptr->size());
+            current_shm_offset_ += data_ptr->size();
+        }
+        while (!data_.empty() && timestamp - std::get<1>(data_.front()) > message_remaining_time_s_)
+        {
+            BytesPtr old_info_ptr = std::get<0>(data_.front());
+            SharedMemoryDataInfo old_info(old_info_ptr->data());
+            occupied_shm_size_ -= old_info.data_size_bytes();
+            data_.pop_front();
+        }
     }
-    data_.push_back({data_ptr, timestamp});
-    while (!data_.empty() && timestamp - std::get<1>(data_.front()) > message_remaining_time_s_)
+    else
     {
-        data_.pop_front();
+        data_.push_back({data_ptr, timestamp});
+        while (!data_.empty() && timestamp - std::get<1>(data_.front()) > message_remaining_time_s_)
+        {
+            data_.pop_front();
+        }
     }
 }
 
@@ -102,6 +143,12 @@ std::vector<TimedPtr> DataTopic::pop_data_ptrs(Order order, int32_t n)
     {
         for (int i = 0; i < n; i++)
         {
+            if (is_shm_topic_)
+            {
+                BytesPtr old_info_ptr = std::get<0>(data_.back());
+                SharedMemoryDataInfo old_info(old_info_ptr->data());
+                occupied_shm_size_ -= old_info.data_size_bytes();
+            }
             data_.pop_back();
         }
     }
@@ -110,6 +157,12 @@ std::vector<TimedPtr> DataTopic::pop_data_ptrs(Order order, int32_t n)
         for (int i = 0; i < n; i++)
         {
             data_.pop_front();
+            if (is_shm_topic_)
+            {
+                BytesPtr old_info_ptr = std::get<0>(data_.front());
+                SharedMemoryDataInfo old_info(old_info_ptr->data());
+                occupied_shm_size_ -= old_info.data_size_bytes();
+            }
         }
     }
     else
@@ -122,9 +175,42 @@ std::vector<TimedPtr> DataTopic::pop_data_ptrs(Order order, int32_t n)
 void DataTopic::clear_data()
 {
     data_.clear();
+    if (is_shm_topic_)
+    {
+        occupied_shm_size_ = 0;
+        current_shm_offset_ = 0;
+    }
 }
 
 int DataTopic::size() const
 {
     return data_.size();
+}
+
+std::string DataTopic::get_shared_memory_data(const SharedMemoryDataInfo &shm_data_info)
+{
+    if (shm_data_info.server_name() != server_name_ || shm_data_info.topic_name() != topic_name_)
+    {
+        throw std::runtime_error("Shared memory data info is not valid");
+    }
+
+    if (shm_data_info.shm_start_idx() + shm_data_info.data_size_bytes() > shm_size_)
+    {
+        uint64_t first_part_size = shm_size_ - shm_data_info.shm_start_idx();
+        uint64_t second_part_size = shm_data_info.data_size_bytes() - first_part_size;
+        std::string data_str(shm_data_info.data_size_bytes(), '\0');
+        memcpy(data_str.data(), reinterpret_cast<char *>(shm_ptr_) + shm_data_info.shm_start_idx(), first_part_size);
+        memcpy(data_str.data() + first_part_size, reinterpret_cast<char *>(shm_ptr_), second_part_size);
+        return data_str;
+    }
+    else
+    {
+        return std::string(reinterpret_cast<char *>(shm_ptr_) + shm_data_info.shm_start_idx(),
+                           shm_data_info.data_size_bytes());
+    }
+}
+
+bool DataTopic::is_shm_topic() const
+{
+    return is_shm_topic_;
 }

@@ -1,8 +1,8 @@
 """
- Copyright (c) 2024 Yihuai Gao
- 
- This software is released under the MIT License.
- https://opensource.org/licenses/MIT
+Copyright (c) 2024 Yihuai Gao
+
+This software is released under the MIT License.
+https://opensource.org/licenses/MIT
 """
 
 def steady_clock_us() -> int: ...
@@ -11,6 +11,9 @@ def system_clock_us() -> int: ...
 class RMQServer:
     def __init__(self, server_name: str, server_endpoint: str) -> None: ...
     def add_topic(self, topic: str, message_remaining_time_s: float) -> None: ...
+    def add_shared_memory_topic(
+        self, topic: str, message_remaining_time_s: float, shared_memory_size_gb: float
+    ) -> None: ...
     def put_data(self, topic: str, data: bytes) -> None: ...
     def peek_data(
         self, topic: str, order: str, n: int

@@ -94,7 +94,7 @@ void RMQClient::put_data(const std::string &topic, const Bytes &data)
         throw std::invalid_argument("Cannot pass empty bytes string");
     }
     std::vector<TimedPtr> timed_ptrs;
-    BytesPtr data_ptr = std::make_shared<Bytes>(data);
+    BytesPtr data_ptr = std::make_shared<Bytes>(std::move(data));
     TimedPtr timed_ptr = std::make_tuple(data_ptr, get_timestamp());
     timed_ptrs.push_back(timed_ptr);
     RMQMessage message(topic, CmdType::PUT_DATA, Order::NONE, get_timestamp(), timed_ptrs);
@@ -109,7 +109,7 @@ pybind11::bytes RMQClient::request_with_data(const std::string &topic, const Byt
     }
     std::vector<TimedPtr> timed_ptrs;
 
-    BytesPtr data_ptr = std::make_shared<Bytes>(data);
+    BytesPtr data_ptr = std::make_shared<Bytes>(std::move(data));
     TimedPtr timed_ptr = std::make_tuple(data_ptr, get_timestamp());
     timed_ptrs.push_back(timed_ptr);
 

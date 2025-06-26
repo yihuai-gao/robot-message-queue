@@ -26,6 +26,9 @@ class DataTopic
     void clear_data();
     int size() const;
 
+    std::string get_shared_memory_data(const SharedMemoryDataInfo &shm_data_info);
+    bool is_shm_topic() const;
+
   private:
     std::string topic_name_;
     double message_remaining_time_s_;
@@ -34,8 +37,9 @@ class DataTopic
     // Shared memory related
     std::string server_name_;
     std::string shm_name_;
-    unsigned long long shm_size_;
-    unsigned long long occupied_shm_size_;
+    uint64_t shm_size_;
+    uint64_t occupied_shm_size_;
+    uint64_t current_shm_offset_;
     bool is_shm_topic_;
     double shm_size_gb_;
     void *shm_ptr_;
