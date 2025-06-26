@@ -65,13 +65,13 @@ void DataTopic::copy_data_to_shm(const pybind11::bytes &data, double timestamp)
         return;
     }
     BytesPtr info_ptr = std::make_shared<Bytes>(
-        SharedMemoryDataInfo(server_name_, topic_name_, shm_size_, occupied_shm_size_, data_size).serialize());
+        SharedMemoryDataInfo(server_name_, topic_name_, shm_size_, current_shm_offset_, data_size).serialize());
     data_.push_back({info_ptr, timestamp});
     occupied_shm_size_ += data_size;
     while (occupied_shm_size_ > shm_size_)
     {
         BytesPtr old_info_ptr = std::get<0>(data_.front());
-        SharedMemoryDataInfo old_info(old_info_ptr->data());
+        SharedMemoryDataInfo old_info(*old_info_ptr);
         occupied_shm_size_ -= old_info.data_size_bytes();
         data_.pop_front();
     }
@@ -80,14 +80,16 @@ void DataTopic::copy_data_to_shm(const pybind11::bytes &data, double timestamp)
 
     if (current_shm_offset_ + data_size > shm_size_)
     {
-        uint64_t remaining_size = shm_size_ - current_shm_offset_;
-        memcpy(shm_ptr_ + current_shm_offset_, new_data_buffer, remaining_size);
-        current_shm_offset_ = data_size - remaining_size;
-        memcpy(shm_ptr_, new_data_buffer + remaining_size, current_shm_offset_);
+        uint64_t shm_remaining_size = shm_size_ - current_shm_offset_;
+        memcpy(shm_ptr_ + current_shm_offset_, new_data_buffer, shm_remaining_size);
+        current_shm_offset_ = data_size - shm_remaining_size;
+        memcpy(shm_ptr_, new_data_buffer + shm_remaining_size, current_shm_offset_);
     }
     else
     {
+        int64_t start_time = steady_clock_us();
         memcpy(shm_ptr_ + current_shm_offset_, new_data_buffer, data_size);
+        int64_t end_time = steady_clock_us();
         current_shm_offset_ += data_size;
     }
 

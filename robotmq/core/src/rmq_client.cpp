@@ -6,7 +6,7 @@
  */
 
 #include "rmq_client.h"
-
+#include "common.h"
 RMQClient::RMQClient(const std::string &client_name, const std::string &server_endpoint)
     : context_(1), socket_(context_, zmq::socket_type::req), steady_clock_start_time_us_(steady_clock_us()),
       last_retrieved_ptrs_()
@@ -124,7 +124,15 @@ pybind11::bytes RMQClient::request_with_data(const std::string &topic, const Byt
         throw std::runtime_error("Expected 1 reply pointer, but received " + std::to_string(reply_ptrs.size()));
     }
     BytesPtr reply_data_ptr = std::get<0>(reply_ptrs[0]);
-    return pybind11::bytes(*reply_data_ptr);
+    if (SharedMemoryDataInfo::is_shm_data_info(*reply_data_ptr))
+    {
+        SharedMemoryDataInfo data_info(*reply_data_ptr);
+        return get_shm_data(data_info);
+    }
+    else
+    {
+        return pybind11::bytes(*reply_data_ptr);
+    }
 }
 
 pybind11::tuple RMQClient::get_last_retrieved_data()
@@ -138,7 +146,15 @@ pybind11::tuple RMQClient::ptrs_to_tuple_(const std::vector<TimedPtr> &ptrs)
     pybind11::list timestamps;
     for (const TimedPtr ptr : ptrs)
     {
-        data.append(pybind11::bytes(*std::get<0>(ptr)));
+        if (SharedMemoryDataInfo::is_shm_data_info(*std::get<0>(ptr)))
+        {
+            SharedMemoryDataInfo data_info(*std::get<0>(ptr));
+            data.append(get_shm_data(data_info));
+        }
+        else
+        {
+            data.append(pybind11::bytes(*std::get<0>(ptr)));
+        }
         timestamps.append(std::get<1>(ptr));
     }
     return pybind11::make_tuple(data, timestamps);

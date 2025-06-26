@@ -33,7 +33,8 @@ uint32_t bytes_to_uint32(const std::string &bytes)
 {
     if (bytes.size() != sizeof(uint32_t))
     {
-        throw std::invalid_argument("Input bytes must have the same size as an unsigned integer");
+        throw std::invalid_argument("Input bytes must have the same size as a 32-bit unsigned integer, but got " +
+                                    std::to_string(bytes.size()));
     }
     return *reinterpret_cast<const uint32_t *>(bytes.data());
 }
@@ -47,7 +48,8 @@ int32_t bytes_to_int32(const std::string &bytes)
 {
     if (bytes.size() != sizeof(int32_t))
     {
-        throw std::invalid_argument("Input bytes must have the same size as an integer");
+        throw std::invalid_argument("Input bytes must have the same size as a 32-bit integer, but got " +
+                                    std::to_string(bytes.size()));
     }
     return *reinterpret_cast<const int32_t *>(bytes.data());
 }
@@ -61,7 +63,8 @@ uint64_t bytes_to_uint64(const std::string &bytes)
 {
     if (bytes.size() != sizeof(uint64_t))
     {
-        throw std::invalid_argument("Input bytes must have the same size as an unsigned integer");
+        throw std::invalid_argument("Input bytes must have the same size as a 64-bit unsigned integer, but got " +
+                                    std::to_string(bytes.size()));
     }
     return *reinterpret_cast<const uint64_t *>(bytes.data());
 }
@@ -74,7 +77,8 @@ double bytes_to_double(const std::string &bytes)
 {
     if (bytes.size() != sizeof(double))
     {
-        throw std::invalid_argument("Input bytes must have the same size as a double");
+        throw std::invalid_argument("Input bytes must have the same size as a double, but got " +
+                                    std::to_string(bytes.size()));
     }
     return *reinterpret_cast<const double *>(bytes.data());
 }
@@ -134,24 +138,31 @@ SharedMemoryDataInfo::SharedMemoryDataInfo(const std::string &serialized_data_in
 
     uint64_t server_name_size = bytes_to_uint64(serialized_data_info.substr(current_byte_idx, sizeof(uint64_t)));
     current_byte_idx += sizeof(uint64_t);
+    // printf("current_byte_idx: %lu, server_name_size: %lu\n", current_byte_idx, server_name_size);
 
     uint64_t topic_name_size = bytes_to_uint64(serialized_data_info.substr(current_byte_idx, sizeof(uint64_t)));
     current_byte_idx += sizeof(uint64_t);
+    // printf("current_byte_idx: %lu, topic_name_size: %lu\n", current_byte_idx, topic_name_size);
 
     server_name_ = serialized_data_info.substr(current_byte_idx, server_name_size);
     current_byte_idx += server_name_size;
+    // printf("current_byte_idx: %lu, server_name: %s\n", current_byte_idx, server_name_.c_str());
 
     topic_name_ = serialized_data_info.substr(current_byte_idx, topic_name_size);
     current_byte_idx += topic_name_size;
+    // printf("current_byte_idx: %lu, topic_name: %s\n", current_byte_idx, topic_name_.c_str());
 
     shm_size_bytes_ = bytes_to_uint64(serialized_data_info.substr(current_byte_idx, sizeof(uint64_t)));
     current_byte_idx += sizeof(uint64_t);
+    // printf("current_byte_idx: %lu, shm_size_bytes: %lu\n", current_byte_idx, shm_size_bytes_);
 
     shm_start_idx_ = bytes_to_uint64(serialized_data_info.substr(current_byte_idx, sizeof(uint64_t)));
     current_byte_idx += sizeof(uint64_t);
+    // printf("current_byte_idx: %lu, shm_start_idx: %lu\n", current_byte_idx, shm_start_idx_);
 
     data_size_bytes_ = bytes_to_uint64(serialized_data_info.substr(current_byte_idx, sizeof(uint64_t)));
     current_byte_idx += sizeof(uint64_t);
+    // printf("current_byte_idx: %lu, data_size_bytes: %lu\n", current_byte_idx, data_size_bytes_);
 
     if (current_byte_idx != serialized_data_info.size())
     {
@@ -210,4 +221,36 @@ uint64_t SharedMemoryDataInfo::shm_start_idx() const
 uint64_t SharedMemoryDataInfo::data_size_bytes() const
 {
     return data_size_bytes_;
+}
+
+pybind11::bytes get_shm_data(const SharedMemoryDataInfo &data_info)
+{
+    int shm_fd = shm_open(data_info.shm_name().c_str(), O_RDONLY, 0666);
+    if (shm_fd == -1)
+    {
+        throw std::runtime_error("Failed to open shared memory: " + std::string(strerror(errno)));
+    }
+
+    void *shm_ptr = mmap(0, data_info.shm_size_bytes(), PROT_READ, MAP_SHARED, shm_fd, 0);
+    if (shm_ptr == MAP_FAILED)
+    {
+        throw std::runtime_error("Failed to map shared memory: " + std::string(strerror(errno)));
+    }
+    pybind11::bytes data;
+    if (data_info.shm_start_idx() + data_info.data_size_bytes() < data_info.shm_size_bytes())
+    {
+        data = pybind11::bytes(static_cast<char *>(shm_ptr) + data_info.shm_start_idx(), data_info.data_size_bytes());
+    }
+    else
+    {
+        uint64_t first_part_size = data_info.shm_size_bytes() - data_info.shm_start_idx();
+        uint64_t second_part_size = data_info.data_size_bytes() - first_part_size;
+        std::string data_str(data_info.data_size_bytes(), '\0');
+        memcpy(data_str.data(), static_cast<char *>(shm_ptr) + data_info.shm_start_idx(), first_part_size);
+        memcpy(data_str.data() + first_part_size, static_cast<char *>(shm_ptr), second_part_size);
+        data = pybind11::bytes(data_str);
+    }
+    munmap(shm_ptr, data_info.shm_size_bytes());
+    close(shm_fd);
+    return data;
 }

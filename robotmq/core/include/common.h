@@ -66,3 +66,5 @@ class SharedMemoryDataInfo
     uint64_t shm_start_idx_;
     uint64_t data_size_bytes_;
 };
+
+pybind11::bytes get_shm_data(const SharedMemoryDataInfo &data_info);

@@ -13,16 +13,15 @@ def _serialize(data: Any):
         return tuple(_serialize(item) for item in data)
     elif isinstance(data, np.ndarray):
         return (data.data.tobytes(), data.dtype.str, data.shape)
-    elif (
-        isinstance(data, bytes)
-        or isinstance(data, str)
-        or isinstance(data, int)
-        or isinstance(data, float)
-        or data is None
-    ):
-        return data
+    # elif (
+    #     isinstance(data, bytes)
+    #     or isinstance(data, str)
+    #     or isinstance(data, int)
+    #     or isinstance(data, float)
+    #     or data is None
+    # ):
     else:
-        raise ValueError(f"Unsupported type: {type(data)}")
+        return data
 
 
 def serialize(data: Any) -> bytes:
@@ -46,16 +45,18 @@ def _deserialize(data: Any):
             except Exception as e:
                 pass
         return tuple(_deserialize(item) for item in data)
-    elif (
-        isinstance(data, bytes)
-        or isinstance(data, str)
-        or isinstance(data, int)
-        or isinstance(data, float)
-        or data is None
-    ):
-        return data
+    # elif (
+    #     isinstance(data, bytes)
+    #     or isinstance(data, str)
+    #     or isinstance(data, int)
+    #     or isinstance(data, float)
+    #     or data is None
+    # ):
+    #     return data
+    # else:
+    #     raise ValueError(f"Unsupported type: {type(data)}")
     else:
-        raise ValueError(f"Unsupported type: {type(data)}")
+        return data
 
 
 def deserialize(data: bytes) -> Any:
