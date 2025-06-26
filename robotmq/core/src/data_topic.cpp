@@ -6,15 +6,53 @@
  */
 
 #include "data_topic.h"
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 DataTopic::DataTopic(const std::string &topic_name, double message_remaining_time_s)
-    : message_remaining_time_s_(message_remaining_time_s), topic_name_(topic_name)
+    : message_remaining_time_s_(message_remaining_time_s), topic_name_(topic_name), is_shm_topic_(false),
+      shm_size_gb_(0)
 {
     data_.clear();
 }
 
+DataTopic::DataTopic(const std::string &topic_name, double message_remaining_time_s, const std::string server_name,
+                     double shared_memory_size_gb)
+    : message_remaining_time_s_(message_remaining_time_s), topic_name_(topic_name), server_name_(server_name),
+      is_shm_topic_(true), shm_size_gb_(shared_memory_size_gb)
+{
+    data_.clear();
+
+    shm_name_ = server_name + "_" + topic_name;
+
+    // Remove shared memory if already exists
+    if (shm_unlink(shm_name_.c_str()) == -1)
+    {
+        if (errno == ENOENT)
+        {
+        }
+        else
+        {
+            perror("shm_unlink");
+        }
+    }
+
+    // Create shared memory
+    shm_size_ = shm_size_gb_ * 1024 * 1024 * 1024;
+    occupied_shm_size_ = 0;
+    int shm_fd = shm_open(shm_name_.c_str(), O_CREAT | O_RDWR, 0666);
+    ftruncate(shm_fd, shm_size_);
+    shm_ptr_ = mmap(0, shm_size_, PROT_WRITE, MAP_SHARED, shm_fd, 0);
+}
+
 void DataTopic::add_data_ptr(const BytesPtr data_ptr, double timestamp)
 {
+    if (is_shm_topic_)
+    {
+        occupied_shm_size_ += data_ptr->size();
+    }
     data_.push_back({data_ptr, timestamp});
     while (!data_.empty() && timestamp - std::get<1>(data_.front()) > message_remaining_time_s_)
     {

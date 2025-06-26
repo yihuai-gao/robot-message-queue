@@ -15,6 +15,9 @@ class DataTopic
   public:
     DataTopic(const std::string &topic_name, double message_remaining_time_s);
 
+    DataTopic(const std::string &topic_name, double message_remaining_time_s, const std::string server_name,
+              double shared_memory_size_gb);
+
     void add_data_ptr(const BytesPtr data_ptr, double timestamp);
 
     std::vector<TimedPtr> peek_data_ptrs(Order order, int32_t n);
@@ -27,4 +30,13 @@ class DataTopic
     std::string topic_name_;
     double message_remaining_time_s_;
     std::deque<TimedPtr> data_;
+
+    // Shared memory related
+    std::string server_name_;
+    std::string shm_name_;
+    unsigned long long shm_size_;
+    unsigned long long occupied_shm_size_;
+    bool is_shm_topic_;
+    double shm_size_gb_;
+    void *shm_ptr_;
 };
