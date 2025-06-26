@@ -159,7 +159,7 @@ void RMQMessage::decode_data_blocks_()
             continue;
         }
         data_ptrs_.push_back(std::make_tuple(
-            std::make_shared<Bytes>(std::move(Bytes(data_str_.data() + data_start_index, data_length))), timestamp));
+            std::make_shared<Bytes>(Bytes(data_str_.data() + data_start_index, data_length)), timestamp));
         data_start_index += data_length;
     }
 }

@@ -26,7 +26,8 @@ class DataTopic
     void clear_data();
     int size() const;
 
-    std::string get_shared_memory_data(const SharedMemoryDataInfo &shm_data_info);
+    void copy_data_to_shm(const pybind11::bytes &data, double timestamp);
+    pybind11::bytes get_shared_memory_data(const SharedMemoryDataInfo &shm_data_info);
     bool is_shm_topic() const;
 
   private:

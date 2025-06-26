@@ -71,9 +71,10 @@ void RMQServer::add_shared_memory_topic(const std::string &topic, double message
                   message_remaining_time_s, shared_memory_size_gb);
 }
 
-void RMQServer::put_data(const std::string &topic, const Bytes &data)
+void RMQServer::put_data(const std::string &topic, const pybind11::bytes &data)
 {
-    if (data.empty())
+
+    if (pybind11::len(data) == 0)
     {
         throw std::invalid_argument("Cannot pass empty bytes string");
     }
@@ -87,8 +88,16 @@ void RMQServer::put_data(const std::string &topic, const Bytes &data)
         return;
     }
 
-    BytesPtr data_ptr = std::make_shared<Bytes>(data);
-    it->second.add_data_ptr(data_ptr, get_timestamp());
+    int64_t done_make_shared_time = steady_clock_us();
+    if (it->second.is_shm_topic())
+    {
+        it->second.copy_data_to_shm(data, get_timestamp());
+    }
+    else
+    {
+        BytesPtr data_ptr = std::make_shared<Bytes>(pybind11::bytes(data).cast<std::string>());
+        it->second.add_data_ptr(data_ptr, get_timestamp());
+    }
 }
 
 pybind11::tuple RMQServer::peek_data(const std::string &topic, std::string order_str, int n)

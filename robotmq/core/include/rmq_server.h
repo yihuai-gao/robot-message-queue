@@ -28,7 +28,7 @@ class RMQServer
     void add_topic(const std::string &topic, double message_remaining_time_s);
     void add_shared_memory_topic(const std::string &topic, double message_remaining_time_s,
                                  double shared_memory_size_gb);
-    void put_data(const std::string &topic, const Bytes &data);
+    void put_data(const std::string &topic, const pybind11::bytes &data);
     pybind11::tuple peek_data(const std::string &topic, std::string order_str, int n);
     pybind11::tuple pop_data(const std::string &topic, std::string order_str, int n);
     pybind11::tuple wait_for_request(double timeout_s);

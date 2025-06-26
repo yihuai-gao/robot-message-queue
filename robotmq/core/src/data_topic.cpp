@@ -48,56 +48,64 @@ DataTopic::DataTopic(const std::string &topic_name, double message_remaining_tim
     shm_ptr_ = mmap(0, shm_size_, PROT_WRITE, MAP_SHARED, shm_fd, 0);
 }
 
-void DataTopic::add_data_ptr(const BytesPtr data_ptr, double timestamp)
+void DataTopic::copy_data_to_shm(const pybind11::bytes &data, double timestamp)
 {
-    if (is_shm_topic_)
+
+    // Extract the raw bytes and size from py::bytes
+    char *new_data_buffer;
+    ssize_t length;
+    // This gives you a pointer to the underlying buffer and the size
+    PYBIND11_BYTES_AS_STRING_AND_SIZE(data.ptr(), &new_data_buffer, &length);
+
+    // Store the original data into shared memory and the shm_data_info into data_
+    int64_t data_size = length;
+    if (data_size > shm_size_)
     {
-        // Store the original data into shared memory and the shm_data_info into data_
-        if (data_ptr->size() > shm_size_)
-        {
-            printf("Data size %d is larger than shared memory size %d. New data will be ignored\n", data_ptr->size(),
-                   shm_size_);
-            return;
-        }
-        BytesPtr info_ptr = std::make_shared<Bytes>(
-            SharedMemoryDataInfo(server_name_, topic_name_, shm_size_, occupied_shm_size_, data_ptr->size())
-                .serialize());
-        data_.push_back({info_ptr, timestamp});
-        occupied_shm_size_ += data_ptr->size();
-        while (occupied_shm_size_ > shm_size_)
-        {
-            BytesPtr old_info_ptr = std::get<0>(data_.front());
-            SharedMemoryDataInfo old_info(old_info_ptr->data());
-            occupied_shm_size_ -= old_info.data_size_bytes();
-            data_.pop_front();
-        }
-        if (current_shm_offset_ + data_ptr->size() > shm_size_)
-        {
-            uint64_t remaining_size = shm_size_ - current_shm_offset_;
-            memcpy(shm_ptr_ + current_shm_offset_, data_ptr->data(), remaining_size);
-            current_shm_offset_ = data_ptr->size() - remaining_size;
-            memcpy(shm_ptr_, data_ptr->data() + remaining_size, current_shm_offset_);
-        }
-        else
-        {
-            memcpy(shm_ptr_ + current_shm_offset_, data_ptr->data(), data_ptr->size());
-            current_shm_offset_ += data_ptr->size();
-        }
-        while (!data_.empty() && timestamp - std::get<1>(data_.front()) > message_remaining_time_s_)
-        {
-            BytesPtr old_info_ptr = std::get<0>(data_.front());
-            SharedMemoryDataInfo old_info(old_info_ptr->data());
-            occupied_shm_size_ -= old_info.data_size_bytes();
-            data_.pop_front();
-        }
+        printf("Data size %d is larger than shared memory size %d. New data will be ignored\n", data_size, shm_size_);
+        return;
+    }
+    BytesPtr info_ptr = std::make_shared<Bytes>(
+        SharedMemoryDataInfo(server_name_, topic_name_, shm_size_, occupied_shm_size_, data_size).serialize());
+    data_.push_back({info_ptr, timestamp});
+    occupied_shm_size_ += data_size;
+    while (occupied_shm_size_ > shm_size_)
+    {
+        BytesPtr old_info_ptr = std::get<0>(data_.front());
+        SharedMemoryDataInfo old_info(old_info_ptr->data());
+        occupied_shm_size_ -= old_info.data_size_bytes();
+        data_.pop_front();
+    }
+
+    // Copy data to shared memory: 76MB takes 0.02s
+
+    if (current_shm_offset_ + data_size > shm_size_)
+    {
+        uint64_t remaining_size = shm_size_ - current_shm_offset_;
+        memcpy(shm_ptr_ + current_shm_offset_, new_data_buffer, remaining_size);
+        current_shm_offset_ = data_size - remaining_size;
+        memcpy(shm_ptr_, new_data_buffer + remaining_size, current_shm_offset_);
     }
     else
     {
-        data_.push_back({data_ptr, timestamp});
-        while (!data_.empty() && timestamp - std::get<1>(data_.front()) > message_remaining_time_s_)
-        {
-            data_.pop_front();
-        }
+        memcpy(shm_ptr_ + current_shm_offset_, new_data_buffer, data_size);
+        current_shm_offset_ += data_size;
+    }
+
+    while (!data_.empty() && timestamp - std::get<1>(data_.front()) > message_remaining_time_s_)
+    {
+        BytesPtr old_info_ptr = std::get<0>(data_.front());
+        SharedMemoryDataInfo old_info(old_info_ptr->data());
+        occupied_shm_size_ -= old_info.data_size_bytes();
+        data_.pop_front();
+    }
+}
+
+void DataTopic::add_data_ptr(const BytesPtr data_ptr, double timestamp)
+{
+    data_.push_back({data_ptr, timestamp});
+    while (!data_.empty() && timestamp - std::get<1>(data_.front()) > message_remaining_time_s_)
+    {
+        data_.pop_front();
     }
 }
 
@@ -187,7 +195,7 @@ int DataTopic::size() const
     return data_.size();
 }
 
-std::string DataTopic::get_shared_memory_data(const SharedMemoryDataInfo &shm_data_info)
+pybind11::bytes DataTopic::get_shared_memory_data(const SharedMemoryDataInfo &shm_data_info)
 {
     if (shm_data_info.server_name() != server_name_ || shm_data_info.topic_name() != topic_name_)
     {
@@ -201,12 +209,12 @@ std::string DataTopic::get_shared_memory_data(const SharedMemoryDataInfo &shm_da
         std::string data_str(shm_data_info.data_size_bytes(), '\0');
         memcpy(data_str.data(), reinterpret_cast<char *>(shm_ptr_) + shm_data_info.shm_start_idx(), first_part_size);
         memcpy(data_str.data() + first_part_size, reinterpret_cast<char *>(shm_ptr_), second_part_size);
-        return data_str;
+        return pybind11::bytes(data_str);
     }
     else
     {
-        return std::string(reinterpret_cast<char *>(shm_ptr_) + shm_data_info.shm_start_idx(),
-                           shm_data_info.data_size_bytes());
+        return pybind11::bytes(reinterpret_cast<char *>(shm_ptr_) + shm_data_info.shm_start_idx(),
+                               shm_data_info.data_size_bytes());
     }
 }
 
