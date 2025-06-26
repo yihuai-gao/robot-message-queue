@@ -6,11 +6,11 @@
  */
 
 #include "data_topic.h"
+#include "common.h"
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
-
 DataTopic::DataTopic(const std::string &topic_name, double message_remaining_time_s)
     : message_remaining_time_s_(message_remaining_time_s), topic_name_(topic_name), is_shm_topic_(false),
       shm_size_gb_(0)
@@ -87,9 +87,7 @@ void DataTopic::copy_data_to_shm(const pybind11::bytes &data, double timestamp)
     }
     else
     {
-        int64_t start_time = steady_clock_us();
         memcpy(shm_ptr_ + current_shm_offset_, new_data_buffer, data_size);
-        int64_t end_time = steady_clock_us();
         current_shm_offset_ += data_size;
     }
 
@@ -206,12 +204,11 @@ pybind11::bytes DataTopic::get_shared_memory_data(const SharedMemoryDataInfo &sh
 
     if (shm_data_info.shm_start_idx() + shm_data_info.data_size_bytes() > shm_size_)
     {
-        uint64_t first_part_size = shm_size_ - shm_data_info.shm_start_idx();
-        uint64_t second_part_size = shm_data_info.data_size_bytes() - first_part_size;
-        std::string data_str(shm_data_info.data_size_bytes(), '\0');
-        memcpy(data_str.data(), reinterpret_cast<char *>(shm_ptr_) + shm_data_info.shm_start_idx(), first_part_size);
-        memcpy(data_str.data() + first_part_size, reinterpret_cast<char *>(shm_ptr_), second_part_size);
-        return pybind11::bytes(data_str);
+        char *a = reinterpret_cast<char *>(shm_ptr_) + shm_data_info.shm_start_idx();
+        size_t a_len = shm_size_ - shm_data_info.shm_start_idx();
+        char *b = reinterpret_cast<char *>(shm_ptr_);
+        size_t b_len = shm_data_info.data_size_bytes() - a_len;
+        return concat_to_pybytes(a, a_len, b, b_len);
     }
     else
     {

@@ -223,6 +223,26 @@ uint64_t SharedMemoryDataInfo::data_size_bytes() const
     return data_size_bytes_;
 }
 
+pybind11::bytes concat_to_pybytes(const char *a, size_t a_len, const char *b, size_t b_len)
+{
+    size_t total_len = a_len + b_len;
+
+    // Allocate Python bytes object with uninitialized buffer
+    PyObject *py_bytes = PyBytes_FromStringAndSize(nullptr, total_len);
+    if (!py_bytes)
+        throw std::runtime_error("Failed to allocate Python bytes");
+
+    // Get pointer to internal buffer
+    char *buffer = PyBytes_AS_STRING(py_bytes);
+
+    // Copy both arrays into the buffer
+    std::memcpy(buffer, a, a_len);
+    std::memcpy(buffer + a_len, b, b_len);
+
+    // Return py::bytes without extra copy
+    return pybind11::reinterpret_steal<pybind11::bytes>(py_bytes);
+}
+
 pybind11::bytes get_shm_data(const SharedMemoryDataInfo &data_info)
 {
     int shm_fd = shm_open(data_info.shm_name().c_str(), O_RDONLY, 0666);
@@ -243,12 +263,11 @@ pybind11::bytes get_shm_data(const SharedMemoryDataInfo &data_info)
     }
     else
     {
-        uint64_t first_part_size = data_info.shm_size_bytes() - data_info.shm_start_idx();
-        uint64_t second_part_size = data_info.data_size_bytes() - first_part_size;
-        std::string data_str(data_info.data_size_bytes(), '\0');
-        memcpy(data_str.data(), static_cast<char *>(shm_ptr) + data_info.shm_start_idx(), first_part_size);
-        memcpy(data_str.data() + first_part_size, static_cast<char *>(shm_ptr), second_part_size);
-        data = pybind11::bytes(data_str);
+        char *a = static_cast<char *>(shm_ptr) + data_info.shm_start_idx();
+        size_t a_len = data_info.shm_size_bytes() - data_info.shm_start_idx();
+        char *b = static_cast<char *>(shm_ptr);
+        size_t b_len = data_info.data_size_bytes() - a_len;
+        data = concat_to_pybytes(a, a_len, b, b_len);
     }
     munmap(shm_ptr, data_info.shm_size_bytes());
     close(shm_fd);

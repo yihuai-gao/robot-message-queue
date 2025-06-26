@@ -68,3 +68,4 @@ class SharedMemoryDataInfo
 };
 
 pybind11::bytes get_shm_data(const SharedMemoryDataInfo &data_info);
+pybind11::bytes concat_to_pybytes(const char *a, size_t a_len, const char *b, size_t b_len);
