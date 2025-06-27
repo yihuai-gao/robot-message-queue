@@ -47,6 +47,13 @@ RMQServer::~RMQServer()
     background_thread_.join();
     socket_.close();
     context_.close();
+    for (auto &pair : data_topics_)
+    {
+        if (pair.second.is_shm_topic())
+        {
+            pair.second.delete_shm();
+        }
+    }
 }
 
 void RMQServer::add_topic(const std::string &topic, double message_remaining_time_s)

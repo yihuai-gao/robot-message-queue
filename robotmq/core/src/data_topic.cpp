@@ -27,30 +27,18 @@ DataTopic::DataTopic(const std::string &topic_name, double message_remaining_tim
 
     std::string shm_name = server_name + "_" + topic_name;
 
-    // Remove shared memory if already exists
-    if (shm_unlink(shm_name.c_str()) == -1)
-    {
-        if (errno == ENOENT)
-        {
-        }
-        else
-        {
-            perror("shm_unlink");
-        }
-    }
-
     // Create shared memory
     shm_size_ = shm_size_gb_ * 1024 * 1024 * 1024;
     occupied_shm_size_ = 0;
     current_shm_offset_ = 0;
-    int shm_fd = shm_open(shm_name.c_str(), O_CREAT | O_RDWR, 0666);
-    ftruncate(shm_fd, shm_size_);
-    shm_ptr_ = mmap(0, shm_size_, PROT_WRITE, MAP_SHARED, shm_fd, 0);
+    shm_fd_ = shm_open(("rmq_" + shm_name).c_str(), O_CREAT | O_RDWR, 0666);
+    ftruncate(shm_fd_, shm_size_);
+    shm_ptr_ = mmap(0, shm_size_, PROT_WRITE, MAP_SHARED, shm_fd_, 0);
 
     // Create shared memory mutex
-    int shm_mutex_fd = shm_open((shm_name + "_mutex").c_str(), O_CREAT | O_RDWR, 0666);
-    ftruncate(shm_mutex_fd, sizeof(pthread_mutex_t));
-    shm_mutex_ptr_ = (pthread_mutex_t *)mmap(0, sizeof(pthread_mutex_t), PROT_WRITE, MAP_SHARED, shm_mutex_fd, 0);
+    shm_mutex_fd_ = shm_open(("rmq_" + shm_name + "_mutex").c_str(), O_CREAT | O_RDWR, 0666);
+    ftruncate(shm_mutex_fd_, sizeof(pthread_mutex_t));
+    shm_mutex_ptr_ = (pthread_mutex_t *)mmap(0, sizeof(pthread_mutex_t), PROT_WRITE, MAP_SHARED, shm_mutex_fd_, 0);
 
     pthread_mutexattr_t attr;
     pthread_mutexattr_init(&attr);
@@ -236,4 +224,18 @@ pybind11::bytes DataTopic::get_shared_memory_data(const SharedMemoryDataInfo &sh
 bool DataTopic::is_shm_topic() const
 {
     return is_shm_topic_;
+}
+
+void DataTopic::delete_shm()
+{
+    if (is_shm_topic_)
+    {
+        printf("deleting shared memory: %s\n", ("rmq_" + server_name_ + "_" + topic_name_).c_str());
+        munmap(shm_ptr_, shm_size_);
+        munmap(shm_mutex_ptr_, sizeof(pthread_mutex_t));
+        shm_unlink(("rmq_" + server_name_ + "_" + topic_name_).c_str());
+        shm_unlink(("rmq_" + server_name_ + "_" + topic_name_ + "_mutex").c_str());
+        close(shm_fd_);
+        close(shm_mutex_fd_);
+    }
 }

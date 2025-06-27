@@ -13,8 +13,8 @@
 #include <unistd.h>
 
 RMQClient::RMQClient(const std::string &client_name, const std::string &server_endpoint)
-    : context_(1), socket_(context_, zmq::socket_type::req), steady_clock_start_time_us_(steady_clock_us()),
-      last_retrieved_ptrs_()
+    : client_name_(client_name), context_(1), socket_(context_, zmq::socket_type::req),
+      steady_clock_start_time_us_(steady_clock_us()), last_retrieved_ptrs_()
 {
     logger_ = spdlog::get(client_name);
     if (!logger_)
@@ -134,7 +134,7 @@ pybind11::bytes RMQClient::request_with_data(const std::string &topic, const pyb
         PYBIND11_BYTES_AS_STRING_AND_SIZE(data.ptr(), &new_data_buffer, &length);
 
         std::string request_shm_name = client_name_ + "_" + topic + "_request";
-        int shm_fd = shm_open(request_shm_name.c_str(), O_CREAT | O_RDWR, 0666);
+        int shm_fd = shm_open(("rmq_" + request_shm_name).c_str(), O_CREAT | O_RDWR, 0666);
         ftruncate(shm_fd, length);
         void *shm_ptr = mmap(0, length, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
         memcpy(shm_ptr, new_data_buffer, length);
@@ -148,6 +148,7 @@ pybind11::bytes RMQClient::request_with_data(const std::string &topic, const pyb
         RMQMessage message(topic, CmdType::REQUEST_WITH_DATA, Order::NONE, get_timestamp(), timed_ptrs);
         reply_ptrs = send_request_(message);
         munmap(shm_ptr, length);
+        shm_unlink(("rmq_" + request_shm_name).c_str());
         close(shm_fd);
     }
 

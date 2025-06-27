@@ -1,7 +1,7 @@
 import numpy as np
-import numpy.typing as npt
 import pickle
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any
+import os
 
 
 def _serialize(data: Any):
@@ -61,3 +61,9 @@ def _deserialize(data: Any):
 
 def deserialize(data: bytes) -> Any:
     return _deserialize(pickle.loads(data))
+
+
+def clear_shared_memory():
+    for file in os.listdir("/dev/shm"):
+        if file.startswith("rmq_"):
+            os.remove(f"/dev/shm/{file}")

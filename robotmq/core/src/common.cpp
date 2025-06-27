@@ -226,7 +226,7 @@ pybind11::bytes concat_to_pybytes(const char *a, size_t a_len, const char *b, si
 pybind11::bytes SharedMemoryDataInfo::get_shm_data() const
 {
 
-    int shm_fd = shm_open(shm_name().c_str(), O_RDONLY, 0666);
+    int shm_fd = shm_open(("rmq_" + shm_name()).c_str(), O_RDONLY, 0666);
     if (shm_fd == -1)
     {
         throw std::runtime_error("Failed to open shared memory: " + std::string(strerror(errno)));
@@ -260,7 +260,7 @@ pybind11::bytes SharedMemoryDataInfo::get_shm_data_with_mutex() const
 {
 
     // Lock the mutex
-    int shm_mutex_fd = shm_open(shm_mutex_name().c_str(), O_RDWR, 0666);
+    int shm_mutex_fd = shm_open(("rmq_" + shm_mutex_name()).c_str(), O_RDWR, 0666);
     if (shm_mutex_fd == -1)
     {
         throw std::runtime_error("Failed to open shared memory mutex: " + std::string(strerror(errno)));
