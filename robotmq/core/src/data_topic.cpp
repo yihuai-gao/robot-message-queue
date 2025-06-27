@@ -74,15 +74,17 @@ void DataTopic::copy_data_to_shm(const pybind11::bytes &data, double timestamp)
         printf("Data size %d is larger than shared memory size %d. New data will be ignored\n", data_size, shm_size_);
         return;
     }
-    BytesPtr info_ptr = std::make_shared<Bytes>(
-        SharedMemoryDataInfo(server_name_, topic_name_, shm_size_, current_shm_offset_, data_size).serialize());
+    std::string shm_name = server_name_ + "_" + topic_name_;
+    BytesPtr info_ptr =
+        std::make_shared<Bytes>(SharedMemoryDataInfo(shm_name, shm_size_, current_shm_offset_, data_size).serialize());
     data_.push_back({info_ptr, timestamp});
     occupied_shm_size_ += data_size;
     while (occupied_shm_size_ > shm_size_)
     {
         BytesPtr old_info_ptr = std::get<0>(data_.front());
         SharedMemoryDataInfo old_info(*old_info_ptr);
-        occupied_shm_size_ -= old_info.data_size_bytes();
+        if (old_info.shm_name() == shm_name)
+            occupied_shm_size_ -= old_info.data_size_bytes();
         data_.pop_front();
     }
 
@@ -107,7 +109,8 @@ void DataTopic::copy_data_to_shm(const pybind11::bytes &data, double timestamp)
     {
         BytesPtr old_info_ptr = std::get<0>(data_.front());
         SharedMemoryDataInfo old_info(*old_info_ptr);
-        occupied_shm_size_ -= old_info.data_size_bytes();
+        if (old_info.shm_name() == shm_name)
+            occupied_shm_size_ -= old_info.data_size_bytes();
         data_.pop_front();
     }
 }
@@ -167,7 +170,8 @@ std::vector<TimedPtr> DataTopic::pop_data_ptrs(Order order, int32_t n)
             {
                 BytesPtr old_info_ptr = std::get<0>(data_.back());
                 SharedMemoryDataInfo old_info(*old_info_ptr);
-                occupied_shm_size_ -= old_info.data_size_bytes();
+                if (old_info.shm_name() == server_name_ + "_" + topic_name_)
+                    occupied_shm_size_ -= old_info.data_size_bytes();
             }
             data_.pop_back();
         }
@@ -180,7 +184,8 @@ std::vector<TimedPtr> DataTopic::pop_data_ptrs(Order order, int32_t n)
             {
                 BytesPtr old_info_ptr = std::get<0>(data_.front());
                 SharedMemoryDataInfo old_info(*old_info_ptr);
-                occupied_shm_size_ -= old_info.data_size_bytes();
+                if (old_info.shm_name() == server_name_ + "_" + topic_name_)
+                    occupied_shm_size_ -= old_info.data_size_bytes();
             }
             data_.pop_front();
         }
@@ -209,10 +214,6 @@ int DataTopic::size() const
 
 pybind11::bytes DataTopic::get_shared_memory_data(const SharedMemoryDataInfo &shm_data_info)
 {
-    if (shm_data_info.server_name() != server_name_ || shm_data_info.topic_name() != topic_name_)
-    {
-        throw std::runtime_error("Shared memory data info is not valid");
-    }
     pybind11::bytes data;
     pthread_mutex_lock(shm_mutex_ptr_);
     if (shm_data_info.shm_start_idx() + shm_data_info.data_size_bytes() > shm_size_)

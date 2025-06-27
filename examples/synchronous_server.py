@@ -1,8 +1,8 @@
 """
- Copyright (c) 2024 Yihuai Gao
- 
- This software is released under the MIT License.
- https://opensource.org/licenses/MIT
+Copyright (c) 2024 Yihuai Gao
+
+This software is released under the MIT License.
+https://opensource.org/licenses/MIT
 """
 
 import robotmq
@@ -10,9 +10,11 @@ import numpy as np
 import numpy.typing as npt
 from robotmq.utils import serialize, deserialize
 import time
+
+
 def test_reply_request():
     server = robotmq.RMQServer("test_server", "tcp://*:5555")
-    server.add_topic("test_topic", 10.0)
+    server.add_shared_memory_topic("test_topic", 10.0, 0.1)
     while True:
         try:
             print("Waiting for request")
@@ -30,8 +32,7 @@ def test_reply_request():
             print("Replied to request")
         except KeyboardInterrupt:
             break
-        
-    
+
+
 if __name__ == "__main__":
     test_reply_request()
-

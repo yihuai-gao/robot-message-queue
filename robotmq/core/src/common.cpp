@@ -120,10 +120,10 @@ Order str_to_order(const std::string &order)
     throw std::invalid_argument("Invalid end type: " + order);
 }
 
-SharedMemoryDataInfo::SharedMemoryDataInfo(const std::string &server_name, const std::string &topic_name,
-                                           uint64_t shm_size_bytes, uint64_t shm_start_idx, uint64_t data_size_bytes)
-    : server_name_(server_name), topic_name_(topic_name), shm_size_bytes_(shm_size_bytes),
-      shm_start_idx_(shm_start_idx), data_size_bytes_(data_size_bytes)
+SharedMemoryDataInfo::SharedMemoryDataInfo(const std::string &shm_name, uint64_t shm_size_bytes, uint64_t shm_start_idx,
+                                           uint64_t data_size_bytes)
+    : shm_name_(shm_name), shm_size_bytes_(shm_size_bytes), shm_start_idx_(shm_start_idx),
+      data_size_bytes_(data_size_bytes)
 {
 }
 
@@ -132,22 +132,17 @@ SharedMemoryDataInfo::SharedMemoryDataInfo(const std::string &serialized_data_in
     uint64_t current_byte_idx = 0;
     if (serialized_data_info.substr(0, HEADER.size()) != HEADER)
     {
-        throw std::invalid_argument("Invalid serialized data info (beginning doesn't match with HEADER)" +
-                                    std::string(strerror(errno)));
+        printf("serialized_data_info: %s, HEADER: %s\n", serialized_data_info.c_str(), HEADER.c_str());
+        printf("result: %d\n", serialized_data_info.substr(0, HEADER.size()) == HEADER);
+        throw std::invalid_argument("Invalid serialized data info (beginning doesn't match with HEADER)");
     }
     current_byte_idx += HEADER.size();
 
-    uint64_t server_name_size = bytes_to_uint64(serialized_data_info.substr(current_byte_idx, sizeof(uint64_t)));
+    uint64_t shm_name_size = bytes_to_uint64(serialized_data_info.substr(current_byte_idx, sizeof(uint64_t)));
     current_byte_idx += sizeof(uint64_t);
 
-    uint64_t topic_name_size = bytes_to_uint64(serialized_data_info.substr(current_byte_idx, sizeof(uint64_t)));
-    current_byte_idx += sizeof(uint64_t);
-
-    server_name_ = serialized_data_info.substr(current_byte_idx, server_name_size);
-    current_byte_idx += server_name_size;
-
-    topic_name_ = serialized_data_info.substr(current_byte_idx, topic_name_size);
-    current_byte_idx += topic_name_size;
+    shm_name_ = serialized_data_info.substr(current_byte_idx, shm_name_size);
+    current_byte_idx += shm_name_size;
 
     shm_size_bytes_ = bytes_to_uint64(serialized_data_info.substr(current_byte_idx, sizeof(uint64_t)));
     current_byte_idx += sizeof(uint64_t);
@@ -175,12 +170,8 @@ std::string SharedMemoryDataInfo::serialize() const
 {
     std::string serialized;
     serialized.append(HEADER);
-    uint64_t server_name_size = server_name_.size();
-    serialized.append(uint64_to_bytes(server_name_size));
-    uint64_t topic_name_size = topic_name_.size();
-    serialized.append(uint64_to_bytes(topic_name_size));
-    serialized.append(server_name_);
-    serialized.append(topic_name_);
+    serialized.append(uint64_to_bytes(shm_name_.size()));
+    serialized.append(shm_name_);
     serialized.append(uint64_to_bytes(shm_size_bytes_));
     serialized.append(uint64_to_bytes(shm_start_idx_));
     serialized.append(uint64_to_bytes(data_size_bytes_));
@@ -189,22 +180,12 @@ std::string SharedMemoryDataInfo::serialize() const
 
 std::string SharedMemoryDataInfo::shm_name() const
 {
-    return server_name_ + "_" + topic_name_;
+    return shm_name_;
 }
 
 std::string SharedMemoryDataInfo::shm_mutex_name() const
 {
-    return server_name_ + "_" + topic_name_ + "_mutex";
-}
-
-std::string SharedMemoryDataInfo::server_name() const
-{
-    return server_name_;
-}
-
-std::string SharedMemoryDataInfo::topic_name() const
-{
-    return topic_name_;
+    return shm_name_ + "_mutex";
 }
 
 uint64_t SharedMemoryDataInfo::shm_size_bytes() const
@@ -244,14 +225,6 @@ pybind11::bytes concat_to_pybytes(const char *a, size_t a_len, const char *b, si
 
 pybind11::bytes SharedMemoryDataInfo::get_shm_data() const
 {
-    int shm_mutex_fd = shm_open(shm_mutex_name().c_str(), O_RDWR, 0666);
-    if (shm_mutex_fd == -1)
-    {
-        throw std::runtime_error("Failed to open shared memory mutex: " + std::string(strerror(errno)));
-    }
-    pthread_mutex_t *shm_mutex_ptr =
-        (pthread_mutex_t *)mmap(0, sizeof(pthread_mutex_t), PROT_READ | PROT_WRITE, MAP_SHARED, shm_mutex_fd, 0);
-    pthread_mutex_lock(shm_mutex_ptr);
 
     int shm_fd = shm_open(shm_name().c_str(), O_RDONLY, 0666);
     if (shm_fd == -1)
@@ -280,8 +253,28 @@ pybind11::bytes SharedMemoryDataInfo::get_shm_data() const
     munmap(shm_ptr, shm_size_bytes_);
     close(shm_fd);
 
+    return data;
+}
+
+pybind11::bytes SharedMemoryDataInfo::get_shm_data_with_mutex() const
+{
+
+    // Lock the mutex
+    int shm_mutex_fd = shm_open(shm_mutex_name().c_str(), O_RDWR, 0666);
+    if (shm_mutex_fd == -1)
+    {
+        throw std::runtime_error("Failed to open shared memory mutex: " + std::string(strerror(errno)));
+    }
+    pthread_mutex_t *shm_mutex_ptr =
+        (pthread_mutex_t *)mmap(0, sizeof(pthread_mutex_t), PROT_READ | PROT_WRITE, MAP_SHARED, shm_mutex_fd, 0);
+    pthread_mutex_lock(shm_mutex_ptr);
+
+    pybind11::bytes data = get_shm_data();
+
+    // Unlock the mutex
     pthread_mutex_unlock(shm_mutex_ptr);
     munmap(shm_mutex_ptr, sizeof(pthread_mutex_t));
     close(shm_mutex_fd);
+
     return data;
 }

@@ -43,14 +43,12 @@ Order str_to_order(const std::string &order);
 class SharedMemoryDataInfo
 {
   public:
-    SharedMemoryDataInfo(const std::string &server_name, const std::string &topic_name, uint64_t shm_size_bytes,
-                         uint64_t shm_start_idx, uint64_t data_size_bytes);
+    SharedMemoryDataInfo(const std::string &shm_name, uint64_t shm_size_bytes, uint64_t shm_start_idx,
+                         uint64_t data_size_bytes);
     SharedMemoryDataInfo(const std::string &serialized_data_info);
 
     static bool is_shm_data_info(const std::string &serialized_data_info);
 
-    std::string server_name() const;
-    std::string topic_name() const;
     std::string shm_name() const;
     std::string shm_mutex_name() const;
     uint64_t shm_size_bytes() const;
@@ -60,11 +58,11 @@ class SharedMemoryDataInfo
     std::string serialize() const;
 
     pybind11::bytes get_shm_data() const;
+    pybind11::bytes get_shm_data_with_mutex() const;
 
   private:
     static const std::string HEADER;
-    std::string server_name_;
-    std::string topic_name_;
+    std::string shm_name_;
     uint64_t shm_size_bytes_;
     uint64_t shm_start_idx_;
     uint64_t data_size_bytes_;

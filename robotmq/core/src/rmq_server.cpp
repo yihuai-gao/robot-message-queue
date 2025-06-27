@@ -173,8 +173,21 @@ pybind11::tuple RMQServer::wait_for_request(double timeout_s)
                 }
                 // Clear the queue and return the latest data
                 Bytes data = *std::get<0>(ptrs[0]);
+                pybind11::bytes data_bytes;
+                printf("data size: %ld\n", data.size());
+
+                if (SharedMemoryDataInfo::is_shm_data_info(data))
+                {
+                    SharedMemoryDataInfo data_info(data);
+                    data_bytes = data_info.get_shm_data();
+                }
+                else
+                {
+                    data_bytes = pybind11::bytes(data);
+                }
+
                 ptrs.clear();
-                return pybind11::make_tuple(pybind11::bytes(data), pybind11::str(topic));
+                return pybind11::make_tuple(data_bytes, pybind11::str(topic));
             }
         }
     }
@@ -182,7 +195,7 @@ pybind11::tuple RMQServer::wait_for_request(double timeout_s)
     return pybind11::make_tuple(pybind11::bytes(), pybind11::str(""));
 }
 
-void RMQServer::reply_request(const std::string &topic, const Bytes &data)
+void RMQServer::reply_request(const std::string &topic, const pybind11::bytes &data)
 {
     put_data(topic, data);
     {

@@ -7,6 +7,11 @@
 
 #include "rmq_client.h"
 #include "common.h"
+#include <cstring>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <unistd.h>
+
 RMQClient::RMQClient(const std::string &client_name, const std::string &server_endpoint)
     : context_(1), socket_(context_, zmq::socket_type::req), steady_clock_start_time_us_(steady_clock_us()),
       last_retrieved_ptrs_()
@@ -87,9 +92,9 @@ pybind11::tuple RMQClient::pop_data(const std::string &topic, std::string order,
     return ptrs_to_tuple_(reply_ptrs);
 }
 
-void RMQClient::put_data(const std::string &topic, const Bytes &data)
+void RMQClient::put_data(const std::string &topic, const pybind11::bytes &data)
 {
-    if (data.empty())
+    if (pybind11::len(data) == 0)
     {
         throw std::invalid_argument("Cannot pass empty bytes string");
     }
@@ -101,16 +106,17 @@ void RMQClient::put_data(const std::string &topic, const Bytes &data)
     std::vector<TimedPtr> reply_ptrs = send_request_(message);
 }
 
-pybind11::bytes RMQClient::request_with_data(const std::string &topic, const Bytes &data)
+pybind11::bytes RMQClient::request_with_data(const std::string &topic, const pybind11::bytes &data)
 {
-    if (data.empty())
+    if (pybind11::len(data) == 0)
     {
         throw std::invalid_argument("Cannot pass empty bytes string");
     }
+    double timestamp = get_timestamp();
     std::vector<TimedPtr> timed_ptrs;
 
     BytesPtr data_ptr = std::make_shared<Bytes>(data);
-    TimedPtr timed_ptr = std::make_tuple(data_ptr, get_timestamp());
+    TimedPtr timed_ptr = std::make_tuple(data_ptr, timestamp);
     timed_ptrs.push_back(timed_ptr);
 
     RMQMessage message(topic, CmdType::REQUEST_WITH_DATA, Order::NONE, get_timestamp(), timed_ptrs);
@@ -127,7 +133,51 @@ pybind11::bytes RMQClient::request_with_data(const std::string &topic, const Byt
     if (SharedMemoryDataInfo::is_shm_data_info(*reply_data_ptr))
     {
         SharedMemoryDataInfo data_info(*reply_data_ptr);
-        return data_info.get_shm_data();
+        return data_info.get_shm_data_with_mutex();
+    }
+    else
+    {
+        return pybind11::bytes(*reply_data_ptr);
+    }
+}
+
+pybind11::bytes RMQClient::request_with_shared_memory(const std::string &topic, const pybind11::bytes &data)
+{
+    if (pybind11::len(data) == 0)
+    {
+        throw std::invalid_argument("Cannot pass empty bytes string");
+    }
+    double timestamp = get_timestamp();
+
+    // Extract the raw bytes and size from py::bytes
+    char *new_data_buffer;
+    ssize_t length;
+    // This gives you a pointer to the underlying buffer and the size
+    PYBIND11_BYTES_AS_STRING_AND_SIZE(data.ptr(), &new_data_buffer, &length);
+
+    std::string request_shm_name = client_name_ + "_" + topic + "_request";
+    int shm_fd = shm_open(request_shm_name.c_str(), O_CREAT | O_RDWR, 0666);
+    ftruncate(shm_fd, length);
+    void *shm_ptr = mmap(0, length, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+    memcpy(shm_ptr, new_data_buffer, length);
+
+    SharedMemoryDataInfo data_info(request_shm_name, length, 0, length);
+    BytesPtr data_ptr = std::make_shared<Bytes>(data_info.serialize());
+
+    TimedPtr timed_ptr = std::make_tuple(data_ptr, timestamp);
+    std::vector<TimedPtr> timed_ptrs;
+    timed_ptrs.push_back(timed_ptr);
+
+    RMQMessage message(topic, CmdType::REQUEST_WITH_DATA, Order::NONE, get_timestamp(), timed_ptrs);
+    std::vector<TimedPtr> reply_ptrs = send_request_(message);
+    munmap(shm_ptr, length);
+    close(shm_fd);
+
+    BytesPtr reply_data_ptr = std::get<0>(reply_ptrs[0]);
+    if (SharedMemoryDataInfo::is_shm_data_info(*reply_data_ptr))
+    {
+        SharedMemoryDataInfo data_info(*reply_data_ptr);
+        return data_info.get_shm_data_with_mutex();
     }
     else
     {
@@ -149,7 +199,7 @@ pybind11::tuple RMQClient::ptrs_to_tuple_(const std::vector<TimedPtr> &ptrs)
         if (SharedMemoryDataInfo::is_shm_data_info(*std::get<0>(ptr)))
         {
             SharedMemoryDataInfo data_info(*std::get<0>(ptr));
-            data.append(data_info.get_shm_data());
+            data.append(data_info.get_shm_data_with_mutex());
         }
         else
         {

@@ -31,7 +31,8 @@ PYBIND11_MODULE(robotmq_core, m)
         .def("get_last_retrieved_data", &RMQClient::get_last_retrieved_data)
         .def("reset_start_time", &RMQClient::reset_start_time, py::arg("system_time_us"))
         .def("get_timestamp", &RMQClient::get_timestamp)
-        .def("request_with_data", &RMQClient::request_with_data, py::arg("topic"), py::arg("data"));
+        .def("request_with_data", &RMQClient::request_with_data, py::arg("topic"), py::arg("data"))
+        .def("request_with_shared_memory", &RMQClient::request_with_shared_memory, py::arg("topic"), py::arg("data"));
 
     py::class_<RMQServer>(m, "RMQServer")
         .def(py::init<const std::string &, const std::string &>(), py::arg("server_name"), py::arg("server_endpoint"))
