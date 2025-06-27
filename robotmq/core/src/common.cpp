@@ -269,6 +269,7 @@ pybind11::bytes SharedMemoryDataInfo::get_shm_data_with_mutex() const
         (pthread_mutex_t *)mmap(0, sizeof(pthread_mutex_t), PROT_READ | PROT_WRITE, MAP_SHARED, shm_mutex_fd, 0);
     pthread_mutex_lock(shm_mutex_ptr);
 
+    // Get data
     pybind11::bytes data = get_shm_data();
 
     // Unlock the mutex

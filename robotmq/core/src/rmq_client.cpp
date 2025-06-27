@@ -47,7 +47,13 @@ int RMQClient::get_topic_status(const std::string &topic, double timeout_s)
         RMQMessage reply_message(std::string(reply.data<char>(), reply.data<char>() + reply.size()));
         if (reply_message.cmd() == CmdType::GET_TOPIC_STATUS)
         {
-            return std::stoi(reply_message.data_str());
+            std::string data_str = reply_message.data_str();
+            int32_t size = bytes_to_int32(data_str.substr(0, 4));
+            if (data_str.size() == 8)
+            {
+                topic_using_shared_memory_[topic] = bytes_to_int32(data_str.substr(4, 4));
+            }
+            return size;
         }
         else if (reply_message.cmd() == CmdType::ERROR)
         {
@@ -112,15 +118,50 @@ pybind11::bytes RMQClient::request_with_data(const std::string &topic, const pyb
     {
         throw std::invalid_argument("Cannot pass empty bytes string");
     }
+
+    if (topic_using_shared_memory_.find(topic) == topic_using_shared_memory_.end())
+    {
+        get_topic_status(topic, 1.0);
+    }
     double timestamp = get_timestamp();
-    std::vector<TimedPtr> timed_ptrs;
+    std::vector<TimedPtr> reply_ptrs;
 
-    BytesPtr data_ptr = std::make_shared<Bytes>(data);
-    TimedPtr timed_ptr = std::make_tuple(data_ptr, timestamp);
-    timed_ptrs.push_back(timed_ptr);
+    if (topic_using_shared_memory_[topic])
+    {
+        // Extract the raw bytes and size from py::bytes
+        char *new_data_buffer;
+        ssize_t length;
+        PYBIND11_BYTES_AS_STRING_AND_SIZE(data.ptr(), &new_data_buffer, &length);
 
-    RMQMessage message(topic, CmdType::REQUEST_WITH_DATA, Order::NONE, get_timestamp(), timed_ptrs);
-    std::vector<TimedPtr> reply_ptrs = send_request_(message);
+        std::string request_shm_name = client_name_ + "_" + topic + "_request";
+        int shm_fd = shm_open(request_shm_name.c_str(), O_CREAT | O_RDWR, 0666);
+        ftruncate(shm_fd, length);
+        void *shm_ptr = mmap(0, length, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+        memcpy(shm_ptr, new_data_buffer, length);
+        SharedMemoryDataInfo data_info(request_shm_name, length, 0, length);
+        BytesPtr data_ptr = std::make_shared<Bytes>(data_info.serialize());
+
+        TimedPtr timed_ptr = std::make_tuple(data_ptr, timestamp);
+        std::vector<TimedPtr> timed_ptrs;
+        timed_ptrs.push_back(timed_ptr);
+
+        RMQMessage message(topic, CmdType::REQUEST_WITH_DATA, Order::NONE, get_timestamp(), timed_ptrs);
+        reply_ptrs = send_request_(message);
+        munmap(shm_ptr, length);
+        close(shm_fd);
+    }
+
+    else
+    {
+        std::vector<TimedPtr> timed_ptrs;
+        BytesPtr data_ptr = std::make_shared<Bytes>(data);
+        TimedPtr timed_ptr = std::make_tuple(data_ptr, timestamp);
+        timed_ptrs.push_back(timed_ptr);
+
+        RMQMessage message(topic, CmdType::REQUEST_WITH_DATA, Order::NONE, get_timestamp(), timed_ptrs);
+        reply_ptrs = send_request_(message);
+    }
+
     if (reply_ptrs.empty())
     {
         logger_->error("No response from server for request with data on topic: {}", topic);
@@ -129,50 +170,6 @@ pybind11::bytes RMQClient::request_with_data(const std::string &topic, const pyb
     {
         throw std::runtime_error("Expected 1 reply pointer, but received " + std::to_string(reply_ptrs.size()));
     }
-    BytesPtr reply_data_ptr = std::get<0>(reply_ptrs[0]);
-    if (SharedMemoryDataInfo::is_shm_data_info(*reply_data_ptr))
-    {
-        SharedMemoryDataInfo data_info(*reply_data_ptr);
-        return data_info.get_shm_data_with_mutex();
-    }
-    else
-    {
-        return pybind11::bytes(*reply_data_ptr);
-    }
-}
-
-pybind11::bytes RMQClient::request_with_shared_memory(const std::string &topic, const pybind11::bytes &data)
-{
-    if (pybind11::len(data) == 0)
-    {
-        throw std::invalid_argument("Cannot pass empty bytes string");
-    }
-    double timestamp = get_timestamp();
-
-    // Extract the raw bytes and size from py::bytes
-    char *new_data_buffer;
-    ssize_t length;
-    // This gives you a pointer to the underlying buffer and the size
-    PYBIND11_BYTES_AS_STRING_AND_SIZE(data.ptr(), &new_data_buffer, &length);
-
-    std::string request_shm_name = client_name_ + "_" + topic + "_request";
-    int shm_fd = shm_open(request_shm_name.c_str(), O_CREAT | O_RDWR, 0666);
-    ftruncate(shm_fd, length);
-    void *shm_ptr = mmap(0, length, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
-    memcpy(shm_ptr, new_data_buffer, length);
-
-    SharedMemoryDataInfo data_info(request_shm_name, length, 0, length);
-    BytesPtr data_ptr = std::make_shared<Bytes>(data_info.serialize());
-
-    TimedPtr timed_ptr = std::make_tuple(data_ptr, timestamp);
-    std::vector<TimedPtr> timed_ptrs;
-    timed_ptrs.push_back(timed_ptr);
-
-    RMQMessage message(topic, CmdType::REQUEST_WITH_DATA, Order::NONE, get_timestamp(), timed_ptrs);
-    std::vector<TimedPtr> reply_ptrs = send_request_(message);
-    munmap(shm_ptr, length);
-    close(shm_fd);
-
     BytesPtr reply_data_ptr = std::get<0>(reply_ptrs[0]);
     if (SharedMemoryDataInfo::is_shm_data_info(*reply_data_ptr))
     {

@@ -14,7 +14,9 @@ import time
 
 def test_reply_request():
     server = robotmq.RMQServer("test_server", "tcp://*:5555")
-    server.add_shared_memory_topic("test_topic", 10.0, 0.1)
+    server.add_shared_memory_topic("test_shm_topic", 10.0, 0.1)
+    server.add_topic("test_topic", 10.0)
+
     while True:
         try:
             print("Waiting for request")
@@ -27,8 +29,7 @@ def test_reply_request():
             print(data)
             data += 1.0
             data_bytes = serialize(data)
-            # server.reply_request(request_topic, [data_bytes])
-            server.reply_request("test_topic", data_bytes)
+            server.reply_request(request_topic, data_bytes)
             print("Replied to request")
         except KeyboardInterrupt:
             break

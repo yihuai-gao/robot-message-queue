@@ -174,7 +174,6 @@ pybind11::tuple RMQServer::wait_for_request(double timeout_s)
                 // Clear the queue and return the latest data
                 Bytes data = *std::get<0>(ptrs[0]);
                 pybind11::bytes data_bytes;
-                printf("data size: %ld\n", data.size());
 
                 if (SharedMemoryDataInfo::is_shm_data_info(data))
                 {
@@ -386,11 +385,11 @@ void RMQServer::process_request_(RMQMessage &message)
         std::string status_str;
         if (it == data_topics_.end())
         {
-            status_str = std::string("-1");
+            status_str = int32_to_bytes(-1);
         }
         else
         {
-            status_str = std::to_string(it->second.size());
+            status_str = int32_to_bytes(it->second.size()) + int32_to_bytes(it->second.is_shm_topic());
         }
         RMQMessage reply(message.topic(), CmdType::GET_TOPIC_STATUS, Order::NONE, get_timestamp(), status_str);
         std::string reply_data = reply.serialize();

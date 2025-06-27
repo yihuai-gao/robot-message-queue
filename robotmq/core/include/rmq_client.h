@@ -11,6 +11,7 @@
 
 #include "common.h"
 #include "rmq_message.h"
+#include <map>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
 #include <string>
@@ -37,6 +38,7 @@ class RMQClient
     void reset_start_time(int64_t system_time_us);
 
   private:
+    std::map<std::string, bool> topic_using_shared_memory_;
     std::vector<TimedPtr> deserialize_multiple_data_(const std::string &data);
     std::vector<TimedPtr> send_request_(RMQMessage &message);
     pybind11::tuple ptrs_to_tuple_(const std::vector<TimedPtr> &ptrs);
