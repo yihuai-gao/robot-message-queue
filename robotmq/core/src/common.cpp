@@ -132,37 +132,31 @@ SharedMemoryDataInfo::SharedMemoryDataInfo(const std::string &serialized_data_in
     uint64_t current_byte_idx = 0;
     if (serialized_data_info.substr(0, HEADER.size()) != HEADER)
     {
-        throw std::invalid_argument("Invalid serialized data info: " + serialized_data_info);
+        throw std::invalid_argument("Invalid serialized data info (beginning doesn't match with HEADER)" +
+                                    std::string(strerror(errno)));
     }
     current_byte_idx += HEADER.size();
 
     uint64_t server_name_size = bytes_to_uint64(serialized_data_info.substr(current_byte_idx, sizeof(uint64_t)));
     current_byte_idx += sizeof(uint64_t);
-    // printf("current_byte_idx: %lu, server_name_size: %lu\n", current_byte_idx, server_name_size);
 
     uint64_t topic_name_size = bytes_to_uint64(serialized_data_info.substr(current_byte_idx, sizeof(uint64_t)));
     current_byte_idx += sizeof(uint64_t);
-    // printf("current_byte_idx: %lu, topic_name_size: %lu\n", current_byte_idx, topic_name_size);
 
     server_name_ = serialized_data_info.substr(current_byte_idx, server_name_size);
     current_byte_idx += server_name_size;
-    // printf("current_byte_idx: %lu, server_name: %s\n", current_byte_idx, server_name_.c_str());
 
     topic_name_ = serialized_data_info.substr(current_byte_idx, topic_name_size);
     current_byte_idx += topic_name_size;
-    // printf("current_byte_idx: %lu, topic_name: %s\n", current_byte_idx, topic_name_.c_str());
 
     shm_size_bytes_ = bytes_to_uint64(serialized_data_info.substr(current_byte_idx, sizeof(uint64_t)));
     current_byte_idx += sizeof(uint64_t);
-    // printf("current_byte_idx: %lu, shm_size_bytes: %lu\n", current_byte_idx, shm_size_bytes_);
 
     shm_start_idx_ = bytes_to_uint64(serialized_data_info.substr(current_byte_idx, sizeof(uint64_t)));
     current_byte_idx += sizeof(uint64_t);
-    // printf("current_byte_idx: %lu, shm_start_idx: %lu\n", current_byte_idx, shm_start_idx_);
 
     data_size_bytes_ = bytes_to_uint64(serialized_data_info.substr(current_byte_idx, sizeof(uint64_t)));
     current_byte_idx += sizeof(uint64_t);
-    // printf("current_byte_idx: %lu, data_size_bytes: %lu\n", current_byte_idx, data_size_bytes_);
 
     if (current_byte_idx != serialized_data_info.size())
     {

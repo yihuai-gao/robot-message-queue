@@ -94,7 +94,7 @@ void DataTopic::copy_data_to_shm(const pybind11::bytes &data, double timestamp)
     while (!data_.empty() && timestamp - std::get<1>(data_.front()) > message_remaining_time_s_)
     {
         BytesPtr old_info_ptr = std::get<0>(data_.front());
-        SharedMemoryDataInfo old_info(old_info_ptr->data());
+        SharedMemoryDataInfo old_info(*old_info_ptr);
         occupied_shm_size_ -= old_info.data_size_bytes();
         data_.pop_front();
     }
@@ -154,7 +154,7 @@ std::vector<TimedPtr> DataTopic::pop_data_ptrs(Order order, int32_t n)
             if (is_shm_topic_)
             {
                 BytesPtr old_info_ptr = std::get<0>(data_.back());
-                SharedMemoryDataInfo old_info(old_info_ptr->data());
+                SharedMemoryDataInfo old_info(*old_info_ptr);
                 occupied_shm_size_ -= old_info.data_size_bytes();
             }
             data_.pop_back();
@@ -164,13 +164,13 @@ std::vector<TimedPtr> DataTopic::pop_data_ptrs(Order order, int32_t n)
     {
         for (int i = 0; i < n; i++)
         {
-            data_.pop_front();
             if (is_shm_topic_)
             {
                 BytesPtr old_info_ptr = std::get<0>(data_.front());
-                SharedMemoryDataInfo old_info(old_info_ptr->data());
+                SharedMemoryDataInfo old_info(*old_info_ptr);
                 occupied_shm_size_ -= old_info.data_size_bytes();
             }
+            data_.pop_front();
         }
     }
     else

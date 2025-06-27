@@ -1,8 +1,8 @@
 """
- Copyright (c) 2024 Yihuai Gao
- 
- This software is released under the MIT License.
- https://opensource.org/licenses/MIT
+Copyright (c) 2024 Yihuai Gao
+
+This software is released under the MIT License.
+https://opensource.org/licenses/MIT
 """
 
 from robotmq import RMQServer
@@ -25,7 +25,8 @@ def test_server():
     print("Server created")
 
     # 3 different ways to serialize data. Also applies for synchronous server.
-    server.add_topic("test_raw_np", 10)
+    server.add_shared_memory_topic("test_raw_np", 10, 1)
+    # server.add_topic("test_raw_np", 10)
     server.add_topic("test_nested_np", 10)
     server.add_topic("test_pickle", 10)
     # This topic is used to test the client's put_data function
