@@ -164,7 +164,7 @@ SharedMemoryDataInfo::SharedMemoryDataInfo(const std::string &serialized_data_in
     }
 }
 
-const std::string SharedMemoryDataInfo::HEADER = "\x0d\x0b";
+const std::string SharedMemoryDataInfo::HEADER = "\x0d\x0a\x0d\x0b";
 
 bool SharedMemoryDataInfo::is_shm_data_info(const std::string &serialized_data_info)
 {
@@ -190,6 +190,11 @@ std::string SharedMemoryDataInfo::serialize() const
 std::string SharedMemoryDataInfo::shm_name() const
 {
     return server_name_ + "_" + topic_name_;
+}
+
+std::string SharedMemoryDataInfo::shm_mutex_name() const
+{
+    return server_name_ + "_" + topic_name_ + "_mutex";
 }
 
 std::string SharedMemoryDataInfo::server_name() const
@@ -237,33 +242,46 @@ pybind11::bytes concat_to_pybytes(const char *a, size_t a_len, const char *b, si
     return pybind11::reinterpret_steal<pybind11::bytes>(py_bytes);
 }
 
-pybind11::bytes get_shm_data(const SharedMemoryDataInfo &data_info)
+pybind11::bytes SharedMemoryDataInfo::get_shm_data() const
 {
-    int shm_fd = shm_open(data_info.shm_name().c_str(), O_RDONLY, 0666);
+    int shm_mutex_fd = shm_open(shm_mutex_name().c_str(), O_RDWR, 0666);
+    if (shm_mutex_fd == -1)
+    {
+        throw std::runtime_error("Failed to open shared memory mutex: " + std::string(strerror(errno)));
+    }
+    pthread_mutex_t *shm_mutex_ptr =
+        (pthread_mutex_t *)mmap(0, sizeof(pthread_mutex_t), PROT_READ | PROT_WRITE, MAP_SHARED, shm_mutex_fd, 0);
+    pthread_mutex_lock(shm_mutex_ptr);
+
+    int shm_fd = shm_open(shm_name().c_str(), O_RDONLY, 0666);
     if (shm_fd == -1)
     {
         throw std::runtime_error("Failed to open shared memory: " + std::string(strerror(errno)));
     }
 
-    void *shm_ptr = mmap(0, data_info.shm_size_bytes(), PROT_READ, MAP_SHARED, shm_fd, 0);
+    void *shm_ptr = mmap(0, shm_size_bytes_, PROT_READ, MAP_SHARED, shm_fd, 0);
     if (shm_ptr == MAP_FAILED)
     {
         throw std::runtime_error("Failed to map shared memory: " + std::string(strerror(errno)));
     }
     pybind11::bytes data;
-    if (data_info.shm_start_idx() + data_info.data_size_bytes() < data_info.shm_size_bytes())
+    if (shm_start_idx_ + data_size_bytes_ < shm_size_bytes_)
     {
-        data = pybind11::bytes(static_cast<char *>(shm_ptr) + data_info.shm_start_idx(), data_info.data_size_bytes());
+        data = pybind11::bytes(static_cast<char *>(shm_ptr) + shm_start_idx_, data_size_bytes_);
     }
     else
     {
-        char *a = static_cast<char *>(shm_ptr) + data_info.shm_start_idx();
-        size_t a_len = data_info.shm_size_bytes() - data_info.shm_start_idx();
+        char *a = static_cast<char *>(shm_ptr) + shm_start_idx_;
+        size_t a_len = shm_size_bytes_ - shm_start_idx_;
         char *b = static_cast<char *>(shm_ptr);
-        size_t b_len = data_info.data_size_bytes() - a_len;
+        size_t b_len = data_size_bytes_ - a_len;
         data = concat_to_pybytes(a, a_len, b, b_len);
     }
-    munmap(shm_ptr, data_info.shm_size_bytes());
+    munmap(shm_ptr, shm_size_bytes_);
     close(shm_fd);
+
+    pthread_mutex_unlock(shm_mutex_ptr);
+    munmap(shm_mutex_ptr, sizeof(pthread_mutex_t));
+    close(shm_mutex_fd);
     return data;
 }

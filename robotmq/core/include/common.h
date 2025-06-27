@@ -52,11 +52,14 @@ class SharedMemoryDataInfo
     std::string server_name() const;
     std::string topic_name() const;
     std::string shm_name() const;
+    std::string shm_mutex_name() const;
     uint64_t shm_size_bytes() const;
     uint64_t shm_start_idx() const;
     uint64_t data_size_bytes() const;
 
     std::string serialize() const;
+
+    pybind11::bytes get_shm_data() const;
 
   private:
     static const std::string HEADER;
@@ -67,5 +70,4 @@ class SharedMemoryDataInfo
     uint64_t data_size_bytes_;
 };
 
-pybind11::bytes get_shm_data(const SharedMemoryDataInfo &data_info);
 pybind11::bytes concat_to_pybytes(const char *a, size_t a_len, const char *b, size_t b_len);

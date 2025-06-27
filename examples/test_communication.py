@@ -21,7 +21,7 @@ def test_communication():
     )
     print("Server and client created")
 
-    for shm_memory_on in [False, True]:
+    for shm_memory_on in [True, False]:
         if shm_memory_on:
             topic_name = "test_shm"
             server.add_shared_memory_topic(topic_name, 10, 0.4)

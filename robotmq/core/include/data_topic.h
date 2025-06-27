@@ -8,6 +8,7 @@
 #pragma once
 #include "common.h"
 #include <deque>
+#include <pthread.h>
 #include <string>
 #include <vector>
 class DataTopic
@@ -37,11 +38,11 @@ class DataTopic
 
     // Shared memory related
     std::string server_name_;
-    std::string shm_name_;
     uint64_t shm_size_;
     uint64_t occupied_shm_size_;
     uint64_t current_shm_offset_;
     bool is_shm_topic_;
     double shm_size_gb_;
     void *shm_ptr_;
+    pthread_mutex_t *shm_mutex_ptr_;
 };

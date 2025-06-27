@@ -25,10 +25,10 @@ DataTopic::DataTopic(const std::string &topic_name, double message_remaining_tim
 {
     data_.clear();
 
-    shm_name_ = server_name + "_" + topic_name;
+    std::string shm_name = server_name + "_" + topic_name;
 
     // Remove shared memory if already exists
-    if (shm_unlink(shm_name_.c_str()) == -1)
+    if (shm_unlink(shm_name.c_str()) == -1)
     {
         if (errno == ENOENT)
         {
@@ -43,9 +43,19 @@ DataTopic::DataTopic(const std::string &topic_name, double message_remaining_tim
     shm_size_ = shm_size_gb_ * 1024 * 1024 * 1024;
     occupied_shm_size_ = 0;
     current_shm_offset_ = 0;
-    int shm_fd = shm_open(shm_name_.c_str(), O_CREAT | O_RDWR, 0666);
+    int shm_fd = shm_open(shm_name.c_str(), O_CREAT | O_RDWR, 0666);
     ftruncate(shm_fd, shm_size_);
     shm_ptr_ = mmap(0, shm_size_, PROT_WRITE, MAP_SHARED, shm_fd, 0);
+
+    // Create shared memory mutex
+    int shm_mutex_fd = shm_open((shm_name + "_mutex").c_str(), O_CREAT | O_RDWR, 0666);
+    ftruncate(shm_mutex_fd, sizeof(pthread_mutex_t));
+    shm_mutex_ptr_ = (pthread_mutex_t *)mmap(0, sizeof(pthread_mutex_t), PROT_WRITE, MAP_SHARED, shm_mutex_fd, 0);
+
+    pthread_mutexattr_t attr;
+    pthread_mutexattr_init(&attr);
+    pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED);
+    pthread_mutex_init(shm_mutex_ptr_, &attr);
 }
 
 void DataTopic::copy_data_to_shm(const pybind11::bytes &data, double timestamp)
@@ -78,6 +88,7 @@ void DataTopic::copy_data_to_shm(const pybind11::bytes &data, double timestamp)
 
     // Copy data to shared memory: 76MB takes 0.02s
 
+    pthread_mutex_lock(shm_mutex_ptr_);
     if (current_shm_offset_ + data_size > shm_size_)
     {
         uint64_t shm_remaining_size = shm_size_ - current_shm_offset_;
@@ -90,6 +101,7 @@ void DataTopic::copy_data_to_shm(const pybind11::bytes &data, double timestamp)
         memcpy(shm_ptr_ + current_shm_offset_, new_data_buffer, data_size);
         current_shm_offset_ += data_size;
     }
+    pthread_mutex_unlock(shm_mutex_ptr_);
 
     while (!data_.empty() && timestamp - std::get<1>(data_.front()) > message_remaining_time_s_)
     {
@@ -201,20 +213,23 @@ pybind11::bytes DataTopic::get_shared_memory_data(const SharedMemoryDataInfo &sh
     {
         throw std::runtime_error("Shared memory data info is not valid");
     }
-
+    pybind11::bytes data;
+    pthread_mutex_lock(shm_mutex_ptr_);
     if (shm_data_info.shm_start_idx() + shm_data_info.data_size_bytes() > shm_size_)
     {
         char *a = reinterpret_cast<char *>(shm_ptr_) + shm_data_info.shm_start_idx();
         size_t a_len = shm_size_ - shm_data_info.shm_start_idx();
         char *b = reinterpret_cast<char *>(shm_ptr_);
         size_t b_len = shm_data_info.data_size_bytes() - a_len;
-        return concat_to_pybytes(a, a_len, b, b_len);
+        data = concat_to_pybytes(a, a_len, b, b_len);
     }
     else
     {
-        return pybind11::bytes(reinterpret_cast<char *>(shm_ptr_) + shm_data_info.shm_start_idx(),
+        data = pybind11::bytes(reinterpret_cast<char *>(shm_ptr_) + shm_data_info.shm_start_idx(),
                                shm_data_info.data_size_bytes());
     }
+    pthread_mutex_unlock(shm_mutex_ptr_);
+    return data;
 }
 
 bool DataTopic::is_shm_topic() const

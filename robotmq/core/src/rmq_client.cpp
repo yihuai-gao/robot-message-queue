@@ -127,7 +127,7 @@ pybind11::bytes RMQClient::request_with_data(const std::string &topic, const Byt
     if (SharedMemoryDataInfo::is_shm_data_info(*reply_data_ptr))
     {
         SharedMemoryDataInfo data_info(*reply_data_ptr);
-        return get_shm_data(data_info);
+        return data_info.get_shm_data();
     }
     else
     {
@@ -149,7 +149,7 @@ pybind11::tuple RMQClient::ptrs_to_tuple_(const std::vector<TimedPtr> &ptrs)
         if (SharedMemoryDataInfo::is_shm_data_info(*std::get<0>(ptr)))
         {
             SharedMemoryDataInfo data_info(*std::get<0>(ptr));
-            data.append(get_shm_data(data_info));
+            data.append(data_info.get_shm_data());
         }
         else
         {
