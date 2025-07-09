@@ -2,6 +2,7 @@ import numpy as np
 import pickle
 from typing import Any
 import os
+import warnings
 
 
 def _serialize(data: Any):
@@ -60,6 +61,11 @@ def _deserialize(data: Any):
 
 
 def deserialize(data: bytes) -> Any:
+    if len(data) == 0:
+        warnings.warn(
+            "robotmq.utils.deserialize: Received empty data. Will return None"
+        )
+        return None
     return _deserialize(pickle.loads(data))
 
 
