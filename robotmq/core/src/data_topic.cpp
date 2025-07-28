@@ -59,7 +59,7 @@ void DataTopic::copy_data_to_shm(const pybind11::bytes &data, double timestamp)
     int64_t data_size = length;
     if (data_size > shm_size_)
     {
-        printf("Data size %d is larger than shared memory size %d. New data will be ignored\n", data_size, shm_size_);
+        printf("Data size %ld is larger than shared memory size %ld. New data will be ignored\n", data_size, shm_size_);
         return;
     }
     std::string shm_name = server_name_ + "_" + topic_name_;

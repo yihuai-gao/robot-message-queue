@@ -35,7 +35,9 @@ def test_mixed_server():
                 print(f"Received ckpt_name: {ckpt_name}")
                 # Simulate loading ckpt
 
+            print("Waiting for request")
             request_data, request_topic = server.wait_for_request(1.0)
+            print(f"Received request: {request_topic}")
             if request_topic:
                 obs_data = deserialize(request_data)
                 if ckpt_name:

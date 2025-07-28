@@ -22,7 +22,7 @@ using BytesPtr = std::shared_ptr<std::string>;
 using TimedPtr = std::tuple<BytesPtr, double>;
 int64_t steady_clock_us();
 int64_t system_clock_us();
-
+void interruptible_sleep(double seconds);
 std::string uint32_to_bytes(uint32_t value);
 uint32_t bytes_to_uint32(const std::string &bytes);
 std::string int32_to_bytes(int32_t value);

@@ -6,6 +6,7 @@
  */
 
 #include "rmq_server.h"
+#include "common.h"
 #include <filesystem>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
@@ -337,7 +338,7 @@ void RMQServer::process_request_(RMQMessage &message)
             std::lock_guard<std::mutex> lock(get_new_request_mutex_);
             get_new_request_ = message.topic();
         }
-        while (true)
+        while (running_)
         {
             std::this_thread::sleep_for(std::chrono::microseconds(100));
             {

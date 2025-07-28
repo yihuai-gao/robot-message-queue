@@ -8,10 +8,50 @@
 #include "common.h"
 #include <cstring>
 #include <fcntl.h>
+#include <pybind11/functional.h>
+#include <pybind11/numpy.h>
+#include <pybind11/pybind11.h>
+#include <pybind11/pytypes.h>
+#include <pybind11/stl.h>
+#include <pybind11/stl_bind.h>
 #include <sstream>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
+
+namespace py = pybind11;
+
+void interruptible_sleep(double seconds)
+{
+    py::gil_scoped_release release; // Release the GIL for C++ execution
+
+    auto start_time = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed_seconds;
+
+    // Sleep in small increments and check for interrupts
+    while (true)
+    {
+        elapsed_seconds = std::chrono::high_resolution_clock::now() - start_time;
+        if (elapsed_seconds.count() >= seconds)
+        {
+            break; // Target sleep duration reached
+        }
+
+        // Calculate remaining time or a small chunk
+        double remaining_seconds = seconds - elapsed_seconds.count();
+        double sleep_chunk = std::min(remaining_seconds, 0.001); // Sleep for 1ms at a time
+
+        std::this_thread::sleep_for(std::chrono::duration<double>(sleep_chunk));
+
+        // Reacquire GIL temporarily to check for Python signals
+        py::gil_scoped_acquire acquire;
+        if (PyErr_CheckSignals() != 0)
+        {
+            // A Python error (like KeyboardInterrupt) is pending
+            throw py::error_already_set(); // Re-raise the Python exception
+        }
+    }
+}
 
 int64_t steady_clock_us()
 {
