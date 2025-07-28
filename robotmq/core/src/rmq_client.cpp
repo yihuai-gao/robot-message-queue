@@ -33,45 +33,68 @@ RMQClient::~RMQClient()
 
 int RMQClient::get_topic_status(const std::string &topic, double timeout_s)
 {
-    RMQMessage message(topic, CmdType::GET_TOPIC_STATUS, get_timestamp(), "");
-    std::string serialized = message.serialize();
-    zmq::message_t request(serialized.data(), serialized.size());
-    socket_.send(request, zmq::send_flags::none);
+    RMQMessage message(topic, CmdType::GET_TOPIC_STATUS, get_timestamp(), "Get topic status");
 
-    zmq::pollitem_t items[] = {{socket_, 0, ZMQ_POLLIN, 0}};
-    zmq::poll(&items[0], 1, timeout_s * 1000);
-    if (items[0].revents & ZMQ_POLLIN)
+    while (true)
     {
-        zmq::message_t reply;
-        socket_.recv(reply);
-        RMQMessage reply_message(std::string(reply.data<char>(), reply.data<char>() + reply.size()));
-        if (reply_message.cmd() == CmdType::GET_TOPIC_STATUS)
+        std::string serialized = message.serialize();
+        zmq::message_t request(serialized.data(), serialized.size());
+        socket_.send(request, zmq::send_flags::none);
+
+        zmq::pollitem_t items[] = {{socket_, 0, ZMQ_POLLIN, 0}};
+        if (timeout_s >= 0)
         {
-            std::string data_str = reply_message.data_str();
-            int32_t size = bytes_to_int32(data_str.substr(0, 4));
-            if (data_str.size() == 8)
-            {
-                topic_using_shared_memory_[topic] = bytes_to_int32(data_str.substr(4, 4));
-            }
-            return size;
-        }
-        else if (reply_message.cmd() == CmdType::ERROR)
-        {
-            throw std::runtime_error("Server returned error: " + reply_message.data_str());
+            zmq::poll(&items[0], 1, timeout_s * 1000);
         }
         else
         {
-            throw std::runtime_error("Invalid command type: " + std::to_string(static_cast<int>(reply_message.cmd())) +
-                                     " for get_topic_status on topic: " + topic);
+            // Wait forever until the server is connected
+            zmq::poll(&items[0], 1, default_timeout_ms_);
+        }
+        if (items[0].revents & ZMQ_POLLIN)
+        {
+            zmq::message_t reply;
+            socket_.recv(reply);
+            RMQMessage reply_message(std::string(reply.data<char>(), reply.data<char>() + reply.size()));
+            if (reply_message.cmd() == CmdType::GET_TOPIC_STATUS)
+            {
+                std::string data_str = reply_message.data_str();
+                int32_t size = bytes_to_int32(data_str.substr(0, 4));
+                if (data_str.size() == 8)
+                {
+                    topic_using_shared_memory_[topic] = bytes_to_int32(data_str.substr(4, 4));
+                }
+                return size;
+            }
+            else if (reply_message.cmd() == CmdType::ERROR)
+            {
+                throw std::runtime_error("Server returned error: " + reply_message.data_str());
+            }
+            else
+            {
+                throw std::runtime_error(
+                    "Invalid command type: " + std::to_string(static_cast<int>(reply_message.cmd())) +
+                    " for get_topic_status on topic: " + topic);
+            }
+        }
+
+        std::string endpoint = socket_.get(zmq::sockopt::last_endpoint);
+        socket_.close();
+        socket_ = zmq::socket_t(context_, zmq::socket_type::req);
+        socket_.connect(endpoint);
+        retries_++;
+        if (retries_ > MAX_RETRIES_)
+        {
+            throw std::runtime_error("No reply from server after " + std::to_string(MAX_RETRIES_) + " retries. " +
+                                     "Please check whether the server is running.");
+        }
+
+        logger_->warn("Not connected to server after {} retries. Retrying...", retries_);
+        if (timeout_s >= 0)
+        {
+            return -2;
         }
     }
-
-    std::string endpoint = socket_.get(zmq::sockopt::last_endpoint);
-    socket_.close();
-    socket_ = zmq::socket_t(context_, zmq::socket_type::req);
-    socket_.connect(endpoint);
-
-    return -2;
 }
 
 pybind11::tuple RMQClient::peek_data(const std::string &topic, int32_t n)
@@ -121,7 +144,7 @@ pybind11::bytes RMQClient::request_with_data(const std::string &topic, const pyb
 
     if (topic_using_shared_memory_.find(topic) == topic_using_shared_memory_.end())
     {
-        get_topic_status(topic, 1.0);
+        get_topic_status(topic, -1.0);
     }
     double timestamp = get_timestamp();
     std::vector<TimedPtr> reply_ptrs;
@@ -224,9 +247,34 @@ std::vector<TimedPtr> RMQClient::send_request_(RMQMessage &message)
 {
     std::string serialized = message.serialize();
     zmq::message_t request(serialized.data(), serialized.size());
+
     socket_.send(request, zmq::send_flags::none);
     zmq::message_t reply;
-    socket_.recv(reply);
+
+    while (true)
+    {
+        zmq::pollitem_t items[] = {{socket_, 0, ZMQ_POLLIN, 0}};
+        zmq::poll(&items[0], 1, default_timeout_ms_);
+        if (items[0].revents & ZMQ_POLLIN)
+        {
+            socket_.recv(reply);
+            break;
+        }
+        retries_++;
+        logger_->warn("No reply from server after {} retries. Retrying...", retries_);
+        if (retries_ > MAX_RETRIES_)
+        {
+            throw std::runtime_error("No reply from server after " + std::to_string(MAX_RETRIES_) + " retries");
+        }
+        std::string endpoint = socket_.get(zmq::sockopt::last_endpoint);
+        socket_.close();
+        socket_ = zmq::socket_t(context_, zmq::socket_type::req);
+        socket_.connect(endpoint);
+
+        zmq::message_t request(serialized.data(), serialized.size());
+        socket_.send(request, zmq::send_flags::none);
+    }
+
     RMQMessage reply_message(std::string(reply.data<char>(), reply.data<char>() + reply.size()));
     if (reply_message.cmd() == CmdType::ERROR)
     {

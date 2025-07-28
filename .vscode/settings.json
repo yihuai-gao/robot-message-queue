@@ -81,7 +81,8 @@
         "format": "cpp",
         "fstream": "cpp",
         "shared_mutex": "cpp",
-        "stdfloat": "cpp"
+        "stdfloat": "cpp",
+        "stacktrace": "cpp"
     },
     "licenser.useSingleLineStyle": false,
     "licenser.projectName": "robotmq",

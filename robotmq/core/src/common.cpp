@@ -106,8 +106,9 @@ SharedMemoryDataInfo::SharedMemoryDataInfo(const std::string &serialized_data_in
     uint64_t current_byte_idx = 0;
     if (serialized_data_info.substr(0, HEADER.size()) != HEADER)
     {
-        printf("serialized_data_info: %s, HEADER: %s\n", serialized_data_info.c_str(), HEADER.c_str());
-        printf("result: %d\n", serialized_data_info.substr(0, HEADER.size()) == HEADER);
+        printf("serialized_data_info: first 10 bytes: %s, total size: %zu, HEADER: %s\n",
+               bytes_to_hex(serialized_data_info.substr(0, 10)).c_str(), serialized_data_info.size(),
+               bytes_to_hex(HEADER).c_str());
         throw std::invalid_argument("Invalid serialized data info (beginning doesn't match with HEADER)");
     }
     current_byte_idx += HEADER.size();

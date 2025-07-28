@@ -6,6 +6,8 @@
  */
 
 #include "rmq_message.h"
+// #include <boost/stacktrace.hpp>
+// #include <iostream>
 
 RMQMessage::RMQMessage(const std::string &topic, CmdType cmd, double timestamp, const std::vector<TimedPtr> &data_ptrs)
     : topic_(topic), cmd_(cmd), timestamp_(timestamp), data_ptrs_(data_ptrs)
@@ -16,6 +18,11 @@ RMQMessage::RMQMessage(const std::string &topic, CmdType cmd, double timestamp, 
 RMQMessage::RMQMessage(const std::string &topic, CmdType cmd, double timestamp, const std::string &data_str)
     : topic_(topic), cmd_(cmd), timestamp_(timestamp), data_str_(data_str)
 {
+    if (data_str.empty())
+    {
+        // std::cout << boost::stacktrace::stacktrace() << std::endl;
+        throw std::invalid_argument("Data string cannot be empty");
+    }
     check_input_validity_();
 }
 
@@ -24,7 +31,8 @@ RMQMessage::RMQMessage(const std::string &serialized)
     uint8_t topic_length = static_cast<uint8_t>(serialized[0]);
     if (serialized.size() < sizeof(uint8_t) + topic_length)
     {
-        throw std::invalid_argument("Serialized message is too short");
+        throw std::invalid_argument("Serialized message is too short, size: " + std::to_string(serialized.size()) +
+                                    ", expected at least: " + std::to_string(sizeof(uint8_t) + topic_length));
     }
     int decode_start_index = sizeof(uint8_t);
     topic_ =

@@ -34,6 +34,7 @@ def test_client():
             print(f"Topic exists with {status} messages")
             break
         time.sleep(1)
+
     while True:
         start_time = time.time()
         raw_data_list, timestamps = client.pop_data("test_raw_np", 1)
