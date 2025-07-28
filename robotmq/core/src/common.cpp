@@ -94,32 +94,6 @@ std::string bytes_to_hex(const std::string &bytes)
     return hex_stream.str();
 }
 
-std::string order_to_str(Order order)
-{
-    if (order == Order::EARLIEST)
-    {
-        return "earliest";
-    }
-    else if (order == Order::LATEST)
-    {
-        return "latest";
-    }
-    throw std::invalid_argument("Invalid end type");
-}
-
-Order str_to_order(const std::string &order)
-{
-    if (order == "earliest" || order == "EARLIEST")
-    {
-        return Order::EARLIEST;
-    }
-    else if (order == "latest" || order == "LATEST")
-    {
-        return Order::LATEST;
-    }
-    throw std::invalid_argument("Invalid end type: " + order);
-}
-
 SharedMemoryDataInfo::SharedMemoryDataInfo(const std::string &shm_name, uint64_t shm_size_bytes, uint64_t shm_start_idx,
                                            uint64_t data_size_bytes)
     : shm_name_(shm_name), shm_size_bytes_(shm_size_bytes), shm_start_idx_(shm_start_idx),

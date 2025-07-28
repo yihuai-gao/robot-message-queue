@@ -1,8 +1,8 @@
 """
- Copyright (c) 2024 Yihuai Gao
- 
- This software is released under the MIT License.
- https://opensource.org/licenses/MIT
+Copyright (c) 2024 Yihuai Gao
+
+This software is released under the MIT License.
+https://opensource.org/licenses/MIT
 """
 
 from robotmq import RMQServer
@@ -39,7 +39,7 @@ def test_mixed_client1():
         print(f"Put ckpt_name: {ckpt_name}, time spent: {time.time() - start_time}")
 
         start_time = time.time()
-        result_data_list, _ = client.pop_data("result", "latest", -1)
+        result_data_list, _ = client.pop_data("result", 0)
         if result_data_list:
             for result_data in result_data_list:
                 result = deserialize(result_data)

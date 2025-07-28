@@ -1,8 +1,8 @@
 """
- Copyright (c) 2024 Yihuai Gao
- 
- This software is released under the MIT License.
- https://opensource.org/licenses/MIT
+Copyright (c) 2024 Yihuai Gao
+
+This software is released under the MIT License.
+https://opensource.org/licenses/MIT
 """
 
 from robotmq import RMQServer
@@ -28,7 +28,7 @@ def test_mixed_server():
     ckpt_name = ""
     while True:
         try:
-            ckpt_name_list, _ = server.pop_data("ckpt_name", "latest", 1)
+            ckpt_name_list, _ = server.pop_data("ckpt_name", -1)
             if ckpt_name_list:
                 ckpt_name = deserialize(ckpt_name_list[0])
                 assert isinstance(ckpt_name, str)
@@ -47,13 +47,8 @@ def test_mixed_server():
                     }
                     result_data = serialize(action)
                 else:
-                    result_data = b""
+                    result_data = serialize("No ckpt provided")
                 server.reply_request(request_topic, result_data)
-
-            # result_data_list, _ = server.peek_data("result", "latest", 1)
-            # if result_data_list:
-            #     result = deserialize(result_data_list[0])
-            #     print(f"Received result: {result}")
 
         except KeyboardInterrupt:
             break

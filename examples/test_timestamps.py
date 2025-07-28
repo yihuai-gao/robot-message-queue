@@ -1,8 +1,8 @@
 """
- Copyright (c) 2024 Yihuai Gao
- 
- This software is released under the MIT License.
- https://opensource.org/licenses/MIT
+Copyright (c) 2024 Yihuai Gao
+
+This software is released under the MIT License.
+https://opensource.org/licenses/MIT
 """
 
 import robotmq as rmq
@@ -40,7 +40,7 @@ def test_timestamps():
         # Because of the shared_ptr, the data is stored in the server even if it is dereferenced in python
         del data_bytes
         data, timestamp = server.peek_data(
-            topic_name, "latest", -1
+            topic_name, 0
         )  # only pass the reference so will take zero time
         print(
             f"Adding data: {i}, data size: {rand_data.nbytes / 1024**2:.3f}MB, stored data size: {len(data)}, memory usage: {get_memory_usage():.3f}MB"
@@ -49,7 +49,7 @@ def test_timestamps():
         del data
 
     for i in range(30):
-        raw_data, timestamp = server.pop_data(topic_name, "latest", 1)
+        raw_data, timestamp = server.pop_data(topic_name, -1)
         if len(raw_data) == 0:
             print("No data left")
             break
@@ -57,7 +57,7 @@ def test_timestamps():
         print(f"Poping latest data: {i}, memory usage: {get_memory_usage():.3f}MB")
         time.sleep(0.01)
 
-    data, timestamp = server.pop_data(topic_name, "latest", -1)
+    data, timestamp = server.pop_data(topic_name, 0)
     data_len = len(data)
     del data
     print(f"{data_len=}, memory usage: {get_memory_usage():.3f}MB")

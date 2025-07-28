@@ -29,8 +29,8 @@ class RMQServer
     void add_shared_memory_topic(const std::string &topic, double message_remaining_time_s,
                                  double shared_memory_size_gb);
     void put_data(const std::string &topic, const pybind11::bytes &data);
-    pybind11::tuple peek_data(const std::string &topic, std::string order_str, int n);
-    pybind11::tuple pop_data(const std::string &topic, std::string order_str, int n);
+    pybind11::tuple peek_data(const std::string &topic, int n);
+    pybind11::tuple pop_data(const std::string &topic, int n);
     pybind11::tuple wait_for_request(double timeout_s);
     void reply_request(const std::string &topic, const pybind11::bytes &data);
     double get_timestamp();
@@ -58,8 +58,8 @@ class RMQServer
 
     void process_request_(RMQMessage &message);
 
-    std::vector<TimedPtr> peek_data_ptrs_(const std::string &topic, Order order, int32_t n);
-    std::vector<TimedPtr> pop_data_ptrs_(const std::string &topic, Order order, int32_t n);
+    std::vector<TimedPtr> peek_data_ptrs_(const std::string &topic, int32_t n);
+    std::vector<TimedPtr> pop_data_ptrs_(const std::string &topic, int32_t n);
     void add_data_ptrs_(const std::string &topic, const std::vector<TimedPtr> &data_ptrs);
     bool exists_topic_(const std::string &topic);
     std::function<TimedPtr(const TimedPtr)> request_with_data_handler_;

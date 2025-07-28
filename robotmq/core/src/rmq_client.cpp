@@ -33,7 +33,7 @@ RMQClient::~RMQClient()
 
 int RMQClient::get_topic_status(const std::string &topic, double timeout_s)
 {
-    RMQMessage message(topic, CmdType::GET_TOPIC_STATUS, Order::NONE, get_timestamp(), "");
+    RMQMessage message(topic, CmdType::GET_TOPIC_STATUS, get_timestamp(), "");
     std::string serialized = message.serialize();
     zmq::message_t request(serialized.data(), serialized.size());
     socket_.send(request, zmq::send_flags::none);
@@ -74,10 +74,10 @@ int RMQClient::get_topic_status(const std::string &topic, double timeout_s)
     return -2;
 }
 
-pybind11::tuple RMQClient::peek_data(const std::string &topic, std::string order, int32_t n)
+pybind11::tuple RMQClient::peek_data(const std::string &topic, int32_t n)
 {
     std::string data_str = int32_to_bytes(n);
-    RMQMessage message(topic, CmdType::PEEK_DATA, str_to_order(order), get_timestamp(), data_str);
+    RMQMessage message(topic, CmdType::PEEK_DATA, get_timestamp(), data_str);
     std::vector<TimedPtr> reply_ptrs = send_request_(message);
     if (reply_ptrs.empty())
     {
@@ -86,10 +86,10 @@ pybind11::tuple RMQClient::peek_data(const std::string &topic, std::string order
     return ptrs_to_tuple_(reply_ptrs);
 }
 
-pybind11::tuple RMQClient::pop_data(const std::string &topic, std::string order, int32_t n)
+pybind11::tuple RMQClient::pop_data(const std::string &topic, int32_t n)
 {
     std::string data_str = int32_to_bytes(n);
-    RMQMessage message(topic, CmdType::POP_DATA, str_to_order(order), get_timestamp(), data_str);
+    RMQMessage message(topic, CmdType::POP_DATA, get_timestamp(), data_str);
     std::vector<TimedPtr> reply_ptrs = send_request_(message);
     if (reply_ptrs.empty())
     {
@@ -108,7 +108,7 @@ void RMQClient::put_data(const std::string &topic, const pybind11::bytes &data)
     BytesPtr data_ptr = std::make_shared<Bytes>(data);
     TimedPtr timed_ptr = std::make_tuple(data_ptr, get_timestamp());
     timed_ptrs.push_back(timed_ptr);
-    RMQMessage message(topic, CmdType::PUT_DATA, Order::NONE, get_timestamp(), timed_ptrs);
+    RMQMessage message(topic, CmdType::PUT_DATA, get_timestamp(), timed_ptrs);
     std::vector<TimedPtr> reply_ptrs = send_request_(message);
 }
 
@@ -145,7 +145,7 @@ pybind11::bytes RMQClient::request_with_data(const std::string &topic, const pyb
         std::vector<TimedPtr> timed_ptrs;
         timed_ptrs.push_back(timed_ptr);
 
-        RMQMessage message(topic, CmdType::REQUEST_WITH_DATA, Order::NONE, get_timestamp(), timed_ptrs);
+        RMQMessage message(topic, CmdType::REQUEST_WITH_DATA, get_timestamp(), timed_ptrs);
         reply_ptrs = send_request_(message);
         munmap(shm_ptr, length);
         shm_unlink(("rmq_" + request_shm_name).c_str());
@@ -159,7 +159,7 @@ pybind11::bytes RMQClient::request_with_data(const std::string &topic, const pyb
         TimedPtr timed_ptr = std::make_tuple(data_ptr, timestamp);
         timed_ptrs.push_back(timed_ptr);
 
-        RMQMessage message(topic, CmdType::REQUEST_WITH_DATA, Order::NONE, get_timestamp(), timed_ptrs);
+        RMQMessage message(topic, CmdType::REQUEST_WITH_DATA, get_timestamp(), timed_ptrs);
         reply_ptrs = send_request_(message);
     }
 

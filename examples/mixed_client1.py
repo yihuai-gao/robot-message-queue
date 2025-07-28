@@ -1,8 +1,8 @@
 """
- Copyright (c) 2024 Yihuai Gao
- 
- This software is released under the MIT License.
- https://opensource.org/licenses/MIT
+Copyright (c) 2024 Yihuai Gao
+
+This software is released under the MIT License.
+https://opensource.org/licenses/MIT
 """
 
 from robotmq import RMQServer
@@ -39,8 +39,8 @@ def test_mixed_client1():
         obs_data_bytes = serialize(obs_data)
         start_time = time.time()
         action_data = client.request_with_data("policy_inference", obs_data_bytes)
-        if action_data:
-            action_data = deserialize(action_data)
+        action_data = deserialize(action_data)
+        if action_data != "No ckpt provided":
             assert isinstance(action_data, dict)
             print(
                 f"Received action, shape: {action_data['action'].shape}, time spent: {time.time() - start_time}"

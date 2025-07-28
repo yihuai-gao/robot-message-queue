@@ -112,46 +112,58 @@ void DataTopic::add_data_ptr(const BytesPtr data_ptr, double timestamp)
     }
 }
 
-std::vector<TimedPtr> DataTopic::peek_data_ptrs(Order order, int32_t n)
+std::vector<TimedPtr> DataTopic::peek_data_ptrs(int32_t n)
 {
     if (data_.empty())
     {
         return std::vector<TimedPtr>();
     }
-    if (n < 0 || n > data_.size())
+    if (n == 0)
     {
         n = data_.size();
     }
-    if (order == Order::LATEST)
+    if (n < 0)
     {
-        std::vector<TimedPtr> result(data_.end() - n, data_.end());
-        std::reverse(result.begin(), result.end());
+        if (n < -data_.size())
+        {
+            n = -data_.size();
+        }
+        std::vector<TimedPtr> result(data_.end() + n, data_.end());
         return result;
     }
-    else if (order == Order::EARLIEST)
+    else // n > 0
     {
+        if (n > data_.size())
+        {
+            n = data_.size();
+        }
         return std::vector<TimedPtr>(data_.begin(), data_.begin() + n);
-    }
-    else
-    {
-        throw std::runtime_error("Invalid end type");
     }
 }
 
-std::vector<TimedPtr> DataTopic::pop_data_ptrs(Order order, int32_t n)
+std::vector<TimedPtr> DataTopic::pop_data_ptrs(int32_t n)
 {
     if (data_.empty())
     {
         return std::vector<TimedPtr>();
     }
-    if (n < 0 || n > data_.size())
+    if (n == 0)
     {
         n = data_.size();
     }
-    std::vector<TimedPtr> ret = peek_data_ptrs(order, n);
-
-    if (order == Order::LATEST)
+    else if (n > data_.size())
     {
+        n = data_.size();
+    }
+    else if (n < -data_.size())
+    {
+        n = -data_.size();
+    }
+    std::vector<TimedPtr> ret = peek_data_ptrs(n);
+
+    if (n < 0)
+    {
+        n = -n;
         for (int i = 0; i < n; i++)
         {
             if (is_shm_topic_)
@@ -164,7 +176,7 @@ std::vector<TimedPtr> DataTopic::pop_data_ptrs(Order order, int32_t n)
             data_.pop_back();
         }
     }
-    else if (order == Order::EARLIEST)
+    else // n > 0
     {
         for (int i = 0; i < n; i++)
         {
@@ -177,10 +189,6 @@ std::vector<TimedPtr> DataTopic::pop_data_ptrs(Order order, int32_t n)
             }
             data_.pop_front();
         }
-    }
-    else
-    {
-        throw std::runtime_error("Invalid end type");
     }
     return ret;
 }

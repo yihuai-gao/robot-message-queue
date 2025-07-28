@@ -21,8 +21,8 @@ class DataTopic
 
     void add_data_ptr(const BytesPtr data_ptr, double timestamp);
 
-    std::vector<TimedPtr> peek_data_ptrs(Order order, int32_t n);
-    std::vector<TimedPtr> pop_data_ptrs(Order order, int32_t n);
+    std::vector<TimedPtr> peek_data_ptrs(int32_t n);
+    std::vector<TimedPtr> pop_data_ptrs(int32_t n);
 
     void clear_data();
     int size() const;

@@ -36,7 +36,7 @@ def test_client():
         time.sleep(1)
     while True:
         start_time = time.time()
-        raw_data_list, timestamps = client.pop_data("test_raw_np", "earliest", 1)
+        raw_data_list, timestamps = client.pop_data("test_raw_np", 1)
         end_popping_time = time.time()
         if raw_data_list:
             # You can also use pickle to deserialize the arbitrary data
@@ -45,12 +45,12 @@ def test_client():
                 f"Received numpy data: shape: {data.shape}, size: {data.nbytes / 1024**2:.3f}MB, receiving time: {end_popping_time - start_time:.3f}s"
             )
 
-        nested_data_list, timestamps = client.pop_data("test_nested_np", "earliest", 1)
+        nested_data_list, timestamps = client.pop_data("test_nested_np", 1)
         if nested_data_list:
             nested_data = deserialize(nested_data_list[0])
             print(f"Received nested data: {nested_data}")
 
-        pickle_data_list, timestamps = client.pop_data("test_pickle", "earliest", 1)
+        pickle_data_list, timestamps = client.pop_data("test_pickle", 1)
         if pickle_data_list:
             pickle_data = pickle.loads(pickle_data_list[0])
             assert isinstance(pickle_data, TestClass)

@@ -7,16 +7,14 @@
 
 #include "rmq_message.h"
 
-RMQMessage::RMQMessage(const std::string &topic, CmdType cmd, Order order, double timestamp,
-                       const std::vector<TimedPtr> &data_ptrs)
-    : topic_(topic), cmd_(cmd), order_(order), timestamp_(timestamp), data_ptrs_(data_ptrs)
+RMQMessage::RMQMessage(const std::string &topic, CmdType cmd, double timestamp, const std::vector<TimedPtr> &data_ptrs)
+    : topic_(topic), cmd_(cmd), timestamp_(timestamp), data_ptrs_(data_ptrs)
 {
     check_input_validity_();
 }
 
-RMQMessage::RMQMessage(const std::string &topic, CmdType cmd, Order order, double timestamp,
-                       const std::string &data_str)
-    : topic_(topic), cmd_(cmd), order_(order), timestamp_(timestamp), data_str_(data_str)
+RMQMessage::RMQMessage(const std::string &topic, CmdType cmd, double timestamp, const std::string &data_str)
+    : topic_(topic), cmd_(cmd), timestamp_(timestamp), data_str_(data_str)
 {
     check_input_validity_();
 }
@@ -34,8 +32,6 @@ RMQMessage::RMQMessage(const std::string &serialized)
     decode_start_index += topic_length;
     cmd_ = static_cast<CmdType>(serialized[decode_start_index]);
     decode_start_index += sizeof(CmdType);
-    order_ = static_cast<Order>(serialized[decode_start_index]);
-    decode_start_index += sizeof(Order);
     timestamp_ = bytes_to_double(
         std::string(serialized.begin() + decode_start_index, serialized.begin() + decode_start_index + sizeof(double)));
     decode_start_index += sizeof(double);
@@ -50,11 +46,6 @@ std::string RMQMessage::topic() const
 CmdType RMQMessage::cmd() const
 {
     return cmd_;
-}
-
-Order RMQMessage::order() const
-{
-    return order_;
 }
 
 double RMQMessage::timestamp() const
@@ -91,7 +82,6 @@ std::string RMQMessage::serialize()
     serialized.push_back(static_cast<char>(uint8_t(topic_.size())));
     serialized.append(topic_);
     serialized.push_back(static_cast<char>(cmd_));
-    serialized.push_back(static_cast<char>(order_));
     serialized.append(double_to_bytes(timestamp_));
     serialized.append(data_str());
     return serialized;

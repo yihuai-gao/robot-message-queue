@@ -26,14 +26,12 @@ enum class CmdType : int8_t
 class RMQMessage
 {
   public:
-    RMQMessage(const std::string &topic, CmdType cmd, Order order, double timestamp,
-               const std::vector<TimedPtr> &data_ptrs);
-    RMQMessage(const std::string &topic, CmdType cmd, Order order, double timestamp, const std::string &data_str);
+    RMQMessage(const std::string &topic, CmdType cmd, double timestamp, const std::vector<TimedPtr> &data_ptrs);
+    RMQMessage(const std::string &topic, CmdType cmd, double timestamp, const std::string &data_str);
     RMQMessage(const std::string &serialized);
 
     std::string topic() const;
     CmdType cmd() const;
-    Order order() const;
     double timestamp() const;
     std::vector<TimedPtr> data_ptrs();
     std::string data_str(); // Should avoid using because it may copy a large amount of data
@@ -45,7 +43,6 @@ class RMQMessage
     void check_input_validity_();
     std::string topic_;
     CmdType cmd_;
-    Order order_;
     double timestamp_;
     std::vector<TimedPtr> data_ptrs_;
     std::string data_str_;

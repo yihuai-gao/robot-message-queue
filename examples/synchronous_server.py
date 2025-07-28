@@ -24,13 +24,16 @@ def test_reply_request():
             if not request_topic:
                 continue
 
+            start_time = time.time()
             data = deserialize(request_data)
             assert isinstance(data, np.ndarray)
             print(data)
             data += 1.0
             data_bytes = serialize(data)
             server.reply_request(request_topic, data_bytes)
-            print("Replied to request")
+            print(
+                f"Replied to request, data processing time: {time.time() - start_time:.3f}s"
+            )
         except KeyboardInterrupt:
             break
 

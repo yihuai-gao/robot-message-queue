@@ -42,9 +42,7 @@ def test_communication():
             send_end_time = time.time()
             time.sleep(0.01)
             retrieve_start_time = time.time()
-            retrieved_data, timestamp = client.peek_data(
-                topic=topic_name, order="latest", n=1
-            )
+            retrieved_data, timestamp = client.peek_data(topic=topic_name, n=-1)
             # message_num: int = client.get_topic_status(topic_name, timeout_s=10)
             retrieve_end_time = time.time()
             received_data = np.frombuffer(retrieved_data[0], dtype=np.float64)
@@ -54,9 +52,7 @@ def test_communication():
             )
 
         start_time = time.time()
-        all_pickle_data, all_timestamps = client.peek_data(
-            topic=topic_name, order="earliest", n=-1
-        )
+        all_pickle_data, all_timestamps = client.peek_data(topic=topic_name, n=0)
         request_end_time = time.time()
         remaining_data_num = client.get_topic_status(topic_name, timeout_s=10)
         # all_data = [pickle.loads(data) for data in all_pickle_data]
@@ -71,9 +67,7 @@ def test_communication():
         )
 
         start_time = time.time()
-        last_k_bytes, last_k_timestamps = client.peek_data(
-            topic=topic_name, order="latest", n=5
-        )
+        last_k_bytes, last_k_timestamps = client.peek_data(topic=topic_name, n=-5)
         remaining_data_num = len(last_k_bytes)
         request_end_time = time.time()
         # last_k_data = [pickle.loads(data) for data in last_k_bytes]
@@ -81,9 +75,7 @@ def test_communication():
         loads_end_time = time.time()
         correctness = [
             np.allclose(a, b)
-            for a, b in zip(
-                last_k_data, rand_data_list[-1 : -remaining_data_num - 1 : -1]
-            )  # reverse order
+            for a, b in zip(last_k_data, rand_data_list[-remaining_data_num:])
         ]
         print(
             f"Request last {remaining_data_num} data. Time: {request_end_time - start_time:.4f}s, load time: {loads_end_time - request_end_time: .4f}, correctness: {np.all(correctness)}"
