@@ -156,8 +156,12 @@ pybind11::bytes RMQClient::request_with_data(const std::string &topic, const pyb
         ssize_t length;
         PYBIND11_BYTES_AS_STRING_AND_SIZE(data.ptr(), &new_data_buffer, &length);
 
-        std::string request_shm_name = client_name_ + "_" + topic + "_request";
-        int shm_fd = shm_open(("rmq_" + request_shm_name).c_str(), O_CREAT | O_RDWR, 0666);
+        std::string request_shm_name = "rmq_" + std::string(getlogin()) + "_" + client_name_ + "_" + topic + "_request";
+        int shm_fd = shm_open(request_shm_name.c_str(), O_CREAT | O_RDWR, 0666);
+        if (shm_fd == -1)
+        {
+            throw std::runtime_error("Failed to create shared memory for request with data on topic: " + topic);
+        }
         ftruncate(shm_fd, length);
         void *shm_ptr = mmap(0, length, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
         memcpy(shm_ptr, new_data_buffer, length);
@@ -171,7 +175,7 @@ pybind11::bytes RMQClient::request_with_data(const std::string &topic, const pyb
         RMQMessage message(topic, CmdType::REQUEST_WITH_DATA, get_timestamp(), timed_ptrs);
         reply_ptrs = send_request_(message);
         munmap(shm_ptr, length);
-        shm_unlink(("rmq_" + request_shm_name).c_str());
+        shm_unlink(request_shm_name.c_str());
         close(shm_fd);
     }
 

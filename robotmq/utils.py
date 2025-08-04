@@ -71,5 +71,5 @@ def deserialize(data: bytes) -> Any:
 
 def clear_shared_memory():
     for file in os.listdir("/dev/shm"):
-        if file.startswith("rmq_"):
+        if file.startswith(f"rmq_{os.getlogin()}_"):
             os.remove(f"/dev/shm/{file}")

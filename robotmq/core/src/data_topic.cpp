@@ -25,18 +25,36 @@ DataTopic::DataTopic(const std::string &topic_name, double message_remaining_tim
 {
     data_.clear();
 
-    std::string shm_name = server_name + "_" + topic_name;
-
-    // Create shared memory
     shm_size_ = shm_size_gb_ * 1024 * 1024 * 1024;
     occupied_shm_size_ = 0;
     current_shm_offset_ = 0;
-    shm_fd_ = shm_open(("rmq_" + shm_name).c_str(), O_CREAT | O_RDWR, 0666);
+
+    // Remove existing shared memory and mutex
+
+    char *user_name = getlogin();
+    if (user_name == nullptr)
+    {
+        throw std::runtime_error("Failed to get user_name.");
+    }
+
+    shm_fd_ = shm_open(get_shm_name_().c_str(), O_CREAT | O_RDWR, 0666);
+    if (shm_fd_ == -1)
+    {
+        std::string full_shm_path = "/dev/shm/" + get_shm_name_();
+        throw std::runtime_error("Failed to create shared memory at " + full_shm_path +
+                                 ". Please check if the user has permission to create shared memory.");
+    }
     ftruncate(shm_fd_, shm_size_);
     shm_ptr_ = mmap(0, shm_size_, PROT_WRITE, MAP_SHARED, shm_fd_, 0);
 
     // Create shared memory mutex
-    shm_mutex_fd_ = shm_open(("rmq_" + shm_name + "_mutex").c_str(), O_CREAT | O_RDWR, 0666);
+    shm_mutex_fd_ = shm_open(get_shm_mutex_name_().c_str(), O_CREAT | O_RDWR, 0666);
+    if (shm_mutex_fd_ == -1)
+    {
+        std::string full_shm_mutex_path = "/dev/shm/" + get_shm_mutex_name_();
+        throw std::runtime_error("Failed to create shared memory mutex at " + full_shm_mutex_path +
+                                 ". Please check if the user has permission to create shared memory mutex.");
+    }
     ftruncate(shm_mutex_fd_, sizeof(pthread_mutex_t));
     shm_mutex_ptr_ = (pthread_mutex_t *)mmap(0, sizeof(pthread_mutex_t), PROT_WRITE, MAP_SHARED, shm_mutex_fd_, 0);
 
@@ -44,6 +62,16 @@ DataTopic::DataTopic(const std::string &topic_name, double message_remaining_tim
     pthread_mutexattr_init(&attr);
     pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED);
     pthread_mutex_init(shm_mutex_ptr_, &attr);
+}
+
+std::string DataTopic::get_shm_name_() const
+{
+    return "rmq_" + std::string(getlogin()) + "_" + server_name_ + "_" + topic_name_;
+}
+
+std::string DataTopic::get_shm_mutex_name_() const
+{
+    return "rmq_" + std::string(getlogin()) + "_" + server_name_ + "_" + topic_name_ + "_mutex";
 }
 
 void DataTopic::copy_data_to_shm(const pybind11::bytes &data, double timestamp)
@@ -62,16 +90,15 @@ void DataTopic::copy_data_to_shm(const pybind11::bytes &data, double timestamp)
         printf("Data size %ld is larger than shared memory size %ld. New data will be ignored\n", data_size, shm_size_);
         return;
     }
-    std::string shm_name = server_name_ + "_" + topic_name_;
-    BytesPtr info_ptr =
-        std::make_shared<Bytes>(SharedMemoryDataInfo(shm_name, shm_size_, current_shm_offset_, data_size).serialize());
+    BytesPtr info_ptr = std::make_shared<Bytes>(
+        SharedMemoryDataInfo(get_shm_name_(), shm_size_, current_shm_offset_, data_size).serialize());
     data_.push_back({info_ptr, timestamp});
     occupied_shm_size_ += data_size;
     while (occupied_shm_size_ > shm_size_)
     {
         BytesPtr old_info_ptr = std::get<0>(data_.front());
         SharedMemoryDataInfo old_info(*old_info_ptr);
-        if (old_info.shm_name() == shm_name)
+        if (old_info.shm_name() == get_shm_name_())
             occupied_shm_size_ -= old_info.data_size_bytes();
         data_.pop_front();
     }
@@ -97,7 +124,7 @@ void DataTopic::copy_data_to_shm(const pybind11::bytes &data, double timestamp)
     {
         BytesPtr old_info_ptr = std::get<0>(data_.front());
         SharedMemoryDataInfo old_info(*old_info_ptr);
-        if (old_info.shm_name() == shm_name)
+        if (old_info.shm_name() == get_shm_name_())
             occupied_shm_size_ -= old_info.data_size_bytes();
         data_.pop_front();
     }
@@ -170,7 +197,7 @@ std::vector<TimedPtr> DataTopic::pop_data_ptrs(int32_t n)
             {
                 BytesPtr old_info_ptr = std::get<0>(data_.back());
                 SharedMemoryDataInfo old_info(*old_info_ptr);
-                if (old_info.shm_name() == server_name_ + "_" + topic_name_)
+                if (old_info.shm_name() == get_shm_name_())
                     occupied_shm_size_ -= old_info.data_size_bytes();
             }
             data_.pop_back();
@@ -184,7 +211,7 @@ std::vector<TimedPtr> DataTopic::pop_data_ptrs(int32_t n)
             {
                 BytesPtr old_info_ptr = std::get<0>(data_.front());
                 SharedMemoryDataInfo old_info(*old_info_ptr);
-                if (old_info.shm_name() == server_name_ + "_" + topic_name_)
+                if (old_info.shm_name() == get_shm_name_())
                     occupied_shm_size_ -= old_info.data_size_bytes();
             }
             data_.pop_front();
@@ -238,11 +265,11 @@ void DataTopic::delete_shm()
 {
     if (is_shm_topic_)
     {
-        printf("deleting shared memory: %s\n", ("rmq_" + server_name_ + "_" + topic_name_).c_str());
+        printf("deleting shared memory: %s\n", get_shm_name_().c_str());
         munmap(shm_ptr_, shm_size_);
         munmap(shm_mutex_ptr_, sizeof(pthread_mutex_t));
-        shm_unlink(("rmq_" + server_name_ + "_" + topic_name_).c_str());
-        shm_unlink(("rmq_" + server_name_ + "_" + topic_name_ + "_mutex").c_str());
+        shm_unlink(get_shm_name_().c_str());
+        shm_unlink(get_shm_mutex_name_().c_str());
         close(shm_fd_);
         close(shm_mutex_fd_);
     }

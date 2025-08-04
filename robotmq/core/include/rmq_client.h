@@ -38,7 +38,7 @@ class RMQClient
     void reset_start_time(int64_t system_time_us);
 
   private:
-    const int MAX_RETRIES_ = 500;
+    const int MAX_RETRIES_ = 800;
     int retries_ = 0;
     int default_timeout_ms_ = 1000;
     std::map<std::string, bool> topic_using_shared_memory_;

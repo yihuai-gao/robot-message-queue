@@ -241,16 +241,16 @@ pybind11::bytes concat_to_pybytes(const char *a, size_t a_len, const char *b, si
 pybind11::bytes SharedMemoryDataInfo::get_shm_data() const
 {
 
-    int shm_fd = shm_open(("rmq_" + shm_name()).c_str(), O_RDONLY, 0666);
+    int shm_fd = shm_open(shm_name_.c_str(), O_RDONLY, 0666);
     if (shm_fd == -1)
     {
-        throw std::runtime_error("Failed to open shared memory: " + std::string(strerror(errno)));
+        throw std::runtime_error("Failed to open shared memory: " + shm_name_ + " " + std::string(strerror(errno)));
     }
 
     void *shm_ptr = mmap(0, shm_size_bytes_, PROT_READ, MAP_SHARED, shm_fd, 0);
     if (shm_ptr == MAP_FAILED)
     {
-        throw std::runtime_error("Failed to map shared memory: " + std::string(strerror(errno)));
+        throw std::runtime_error("Failed to map shared memory: " + shm_name_ + " " + std::string(strerror(errno)));
     }
     pybind11::bytes data;
     if (shm_start_idx_ + data_size_bytes_ < shm_size_bytes_)
@@ -275,10 +275,11 @@ pybind11::bytes SharedMemoryDataInfo::get_shm_data_with_mutex() const
 {
 
     // Lock the mutex
-    int shm_mutex_fd = shm_open(("rmq_" + shm_mutex_name()).c_str(), O_RDWR, 0666);
+    int shm_mutex_fd = shm_open((shm_name_ + "_mutex").c_str(), O_RDWR, 0666);
     if (shm_mutex_fd == -1)
     {
-        throw std::runtime_error("Failed to open shared memory mutex: " + std::string(strerror(errno)));
+        throw std::runtime_error("Failed to open shared memory mutex: " + shm_name_ + "_mutex " +
+                                 std::string(strerror(errno)));
     }
     pthread_mutex_t *shm_mutex_ptr =
         (pthread_mutex_t *)mmap(0, sizeof(pthread_mutex_t), PROT_READ | PROT_WRITE, MAP_SHARED, shm_mutex_fd, 0);

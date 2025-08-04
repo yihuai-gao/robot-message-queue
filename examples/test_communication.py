@@ -11,8 +11,11 @@ import time
 import numpy as np
 import numpy.typing as npt
 
+from robotmq.utils import clear_shared_memory
+
 
 def test_communication():
+    clear_shared_memory()
     server = rmq.RMQServer(
         server_name="test_rmq_server", server_endpoint="ipc:///tmp/feeds/0"
     )

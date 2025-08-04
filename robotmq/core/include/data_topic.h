@@ -37,6 +37,9 @@ class DataTopic
     double message_remaining_time_s_;
     std::deque<TimedPtr> data_;
 
+    std::string get_shm_name_() const;
+    std::string get_shm_mutex_name_() const;
+
     // Shared memory related
     std::string server_name_;
     uint64_t shm_size_;
