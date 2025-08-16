@@ -14,8 +14,8 @@ import time
 
 def test_reply_request():
     server = robotmq.RMQServer("test_server", "tcp://*:5555")
-    server.add_shared_memory_topic("test_shm_topic", 10.0, 0.1)
-    server.add_topic("test_topic", 10.0)
+    server.add_shared_memory_topic("test_shm_topic", message_remaining_time_s=10.0, shared_memory_size_gb=1.0)
+    server.add_topic("test_topic", message_remaining_time_s=10.0)
 
     while True:
         try:

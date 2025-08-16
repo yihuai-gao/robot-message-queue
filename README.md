@@ -32,12 +32,9 @@ If you want to run this library on other platforms, you can clone this repositor
 
 ```bash
 # It is recommended to install all C++ dependencies into your conda environment
-conda install spdlog cppzmq zeromq boost pybind11 -y
+conda install spdlog cppzmq zeromq boost pybind11 cmake make gxx_linux-64 -y
 # Alternatively, if you are not using conda, you can install the dependencies using sudo (not recommended)
 # sudo apt install spdlog cppzmq zeromq5-dev libboost-all-dev -y
-
-# If you do not have cmake, make, g++, you can install them using conda, which does not require sudo
-conda install cmake make gxx_linux-64 -y
 
 # Install the robotmq package (both ways should work if you want to import this package in other directories)
 # If you want to install the package inplace in an editable manner

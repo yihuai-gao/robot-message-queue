@@ -47,6 +47,7 @@ class RMQClient
     std::map<std::string, bool> topic_using_shared_memory_;
     std::vector<TimedPtr> deserialize_multiple_data_(const std::string &data);
     std::vector<TimedPtr> send_request_(RMQMessage &message);
+    std::vector<TimedPtr> send_request_(RMQMessage &message, double timeout_s);
     pybind11::tuple ptrs_to_tuple_(const std::vector<TimedPtr> &ptrs);
     std::string client_name_;
     std::shared_ptr<spdlog::logger> logger_;

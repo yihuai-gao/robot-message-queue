@@ -17,10 +17,10 @@ def test_request_with_data():
     # input_data = serialize(np.array([1, 2, 3], dtype=np.float64))
     topics = ["test_shm_topic", "test_topic"]
     for topic in topics:
-        input_data = np.random.randn(10000000)
+        input_data = np.random.randn(100000000)
         data_bytes = serialize(input_data)
         start_time = time.time()
-        reply = client.request_with_data(topic, data_bytes)
+        reply = client.request_with_data(topic, data_bytes, timeout_s=10)
         end_time = time.time()
         reply_data = deserialize(reply)
 

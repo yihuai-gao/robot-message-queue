@@ -55,7 +55,7 @@ def test_communication():
             )
 
         start_time = time.time()
-        all_pickle_data, all_timestamps = client.peek_data(topic=topic_name, n=0)
+        all_pickle_data, all_timestamps = client.peek_data(topic=topic_name, n=0, timeout_s=10)
         request_end_time = time.time()
         remaining_data_num = client.get_topic_status(topic_name, timeout_s=10)
         # all_data = [pickle.loads(data) for data in all_pickle_data]
@@ -70,7 +70,7 @@ def test_communication():
         )
 
         start_time = time.time()
-        last_k_bytes, last_k_timestamps = client.peek_data(topic=topic_name, n=-5)
+        last_k_bytes, last_k_timestamps = client.peek_data(topic=topic_name, n=-5, timeout_s=10)
         remaining_data_num = len(last_k_bytes)
         request_end_time = time.time()
         # last_k_data = [pickle.loads(data) for data in last_k_bytes]

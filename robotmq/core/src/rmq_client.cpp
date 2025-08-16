@@ -49,7 +49,7 @@ int RMQClient::get_topic_status(const std::string &topic, double timeout_s)
         else
         {
             // Wait forever until the server is connected
-            zmq::poll(&items[0], 1, default_timeout_s_ * 1000);
+            zmq::poll(&items[0], 1, default_timeout_s_ * 1000000);
         }
         if (items[0].revents & ZMQ_POLLIN)
         {
@@ -102,15 +102,6 @@ pybind11::tuple RMQClient::peek_data(const std::string &topic, int32_t n)
     return peek_data(topic, n, default_timeout_s_);
 }
 
-pybind11::tuple RMQClient::pop_data(const std::string &topic, int32_t n)
-{
-    return pop_data(topic, n, default_timeout_s_);
-}
-
-pybind11::tuple RMQClient::pop_data(const std::string &topic, int32_t n, double timeout_s)
-{
-    return pop_data(topic, n, default_timeout_s_);
-}
 
 pybind11::tuple RMQClient::peek_data(const std::string &topic, int32_t n, double timeout_s)
 {
@@ -122,6 +113,11 @@ pybind11::tuple RMQClient::peek_data(const std::string &topic, int32_t n, double
         logger_->debug("No data available for topic: {}", topic);
     }
     return ptrs_to_tuple_(reply_ptrs);
+}
+
+pybind11::tuple RMQClient::pop_data(const std::string &topic, int32_t n)
+{
+    return pop_data(topic, n, default_timeout_s_);
 }
 
 pybind11::tuple RMQClient::pop_data(const std::string &topic, int32_t n, double timeout_s)
@@ -136,9 +132,9 @@ pybind11::tuple RMQClient::pop_data(const std::string &topic, int32_t n, double 
     return ptrs_to_tuple_(reply_ptrs);
 }
 
-pybind11::tuple RMQClient::put_data(const std::string &topic, const pybind11::bytes &data)
+void RMQClient::put_data(const std::string &topic, const pybind11::bytes &data)
 {
-    return put_data(topic, data, default_timeout_s_);
+    put_data(topic, data, default_timeout_s_);
 }
 
 void RMQClient::put_data(const std::string &topic, const pybind11::bytes &data, double timeout_s)
@@ -155,7 +151,7 @@ void RMQClient::put_data(const std::string &topic, const pybind11::bytes &data, 
     std::vector<TimedPtr> reply_ptrs = send_request_(message, timeout_s);
 }
 
-pybind11::tuple RMQClient::request_with_data(const std::string &topic, const pybind11::bytes &data)
+pybind11::bytes RMQClient::request_with_data(const std::string &topic, const pybind11::bytes &data)
 {
     return request_with_data(topic, data, default_timeout_s_);
 }
@@ -169,7 +165,7 @@ pybind11::bytes RMQClient::request_with_data(const std::string &topic, const pyb
 
     if (topic_using_shared_memory_.find(topic) == topic_using_shared_memory_.end())
     {
-        get_topic_status(topic, -1.0);
+        get_topic_status(topic, timeout_s);
     }
     double timestamp = get_timestamp();
     std::vector<TimedPtr> reply_ptrs;
@@ -212,7 +208,7 @@ pybind11::bytes RMQClient::request_with_data(const std::string &topic, const pyb
         timed_ptrs.push_back(timed_ptr);
 
         RMQMessage message(topic, CmdType::REQUEST_WITH_DATA, get_timestamp(), timed_ptrs);
-        reply_ptrs = send_request_(message);
+        reply_ptrs = send_request_(message, timeout_s);
     }
 
     if (reply_ptrs.empty())
@@ -287,6 +283,7 @@ std::vector<TimedPtr> RMQClient::send_request_(RMQMessage &message, double timeo
 
     while (true)
     {
+        // printf("Polling for reply, timeout_s: %f, message cmd: %d\n", timeout_s, static_cast<int>(message.cmd()));
         zmq::pollitem_t items[] = {{socket_, 0, ZMQ_POLLIN, 0}};
         int timeout_ms = timeout_s * 1000;
         zmq::poll(&items[0], 1, timeout_ms);
