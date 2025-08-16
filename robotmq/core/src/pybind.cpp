@@ -26,12 +26,16 @@ PYBIND11_MODULE(robotmq_core, m)
         .def(py::init<const std::string &, const std::string &>(), py::arg("client_name"), py::arg("server_endpoint"))
         .def("get_topic_status", &RMQClient::get_topic_status, py::arg("topic"), py::arg("timeout_s"))
         .def("peek_data", &RMQClient::peek_data, py::arg("topic"), py::arg("n"))
+        .def("peek_data", &RMQClient::peek_data, py::arg("topic"), py::arg("n"), py::arg("timeout_s"))
         .def("pop_data", &RMQClient::pop_data, py::arg("topic"), py::arg("n"))
+        .def("pop_data", &RMQClient::pop_data, py::arg("topic"), py::arg("n"), py::arg("timeout_s"))
         .def("put_data", &RMQClient::put_data, py::arg("topic"), py::arg("data"))
+        .def("put_data", &RMQClient::put_data, py::arg("topic"), py::arg("data"), py::arg("timeout_s"))
         .def("get_last_retrieved_data", &RMQClient::get_last_retrieved_data)
         .def("reset_start_time", &RMQClient::reset_start_time, py::arg("system_time_us"))
         .def("get_timestamp", &RMQClient::get_timestamp)
-        .def("request_with_data", &RMQClient::request_with_data, py::arg("topic"), py::arg("data"));
+        .def("request_with_data", &RMQClient::request_with_data, py::arg("topic"), py::arg("data"))
+        .def("request_with_data", &RMQClient::request_with_data, py::arg("topic"), py::arg("data"), py::arg("timeout_s"));
 
     py::class_<RMQServer>(m, "RMQServer")
         .def(py::init<const std::string &, const std::string &>(), py::arg("server_name"), py::arg("server_endpoint"))

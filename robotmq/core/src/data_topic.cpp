@@ -31,11 +31,7 @@ DataTopic::DataTopic(const std::string &topic_name, double message_remaining_tim
 
     // Remove existing shared memory and mutex
 
-    char *user_name = getlogin();
-    if (user_name == nullptr)
-    {
-        throw std::runtime_error("Failed to get user_name.");
-    }
+    std::string user_name = get_user_name();
 
     shm_fd_ = shm_open(get_shm_name_().c_str(), O_CREAT | O_RDWR, 0666);
     if (shm_fd_ == -1)
@@ -66,12 +62,12 @@ DataTopic::DataTopic(const std::string &topic_name, double message_remaining_tim
 
 std::string DataTopic::get_shm_name_() const
 {
-    return "rmq_" + std::string(getlogin()) + "_" + server_name_ + "_" + topic_name_;
+    return "rmq_" + get_user_name() + "_" + server_name_ + "_" + topic_name_;
 }
 
 std::string DataTopic::get_shm_mutex_name_() const
 {
-    return "rmq_" + std::string(getlogin()) + "_" + server_name_ + "_" + topic_name_ + "_mutex";
+    return "rmq_" + get_user_name() + "_" + server_name_ + "_" + topic_name_ + "_mutex";
 }
 
 void DataTopic::copy_data_to_shm(const pybind11::bytes &data, double timestamp)

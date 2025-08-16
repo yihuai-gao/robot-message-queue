@@ -31,6 +31,8 @@ std::string double_to_bytes(double value);
 double bytes_to_double(const std::string &bytes);
 std::string bytes_to_hex(const std::string &bytes);
 
+std::string get_user_name();
+
 class SharedMemoryDataInfo
 {
   public:

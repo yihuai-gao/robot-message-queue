@@ -70,7 +70,7 @@ class RMQClient:
         """
         ...
 
-    def peek_data(self, topic: str, n: int) -> tuple[list[bytes], list[float]]:
+    def peek_data(self, topic: str, n: int, timeout_s: float = 1.0) -> tuple[list[bytes], list[float]]:
         """Peek at data from a specified topic without removing it.
 
         Args:
@@ -85,7 +85,7 @@ class RMQClient:
         """
         ...
 
-    def pop_data(self, topic: str, n: int) -> tuple[list[bytes], list[float]]:
+    def pop_data(self, topic: str, n: int, timeout_s: float = 1.0) -> tuple[list[bytes], list[float]]:
         """Pop data from a specified topic.
 
         Args:
@@ -100,7 +100,7 @@ class RMQClient:
         """
         ...
 
-    def put_data(self, topic: str, data: bytes) -> None:
+    def put_data(self, topic: str, data: bytes, timeout_s: float = 1.0) -> None:
         """
         Put data into a specified topic.
 
@@ -113,4 +113,4 @@ class RMQClient:
     def get_last_retrieved_data(self) -> tuple[bytes, str]: ...
     def get_timestamp(self) -> float: ...
     def reset_start_time(self, system_time_us: int) -> None: ...
-    def request_with_data(self, topic: str, data: bytes) -> bytes: ...
+    def request_with_data(self, topic: str, data: bytes, timeout_s: float = 1.0) -> bytes: ...

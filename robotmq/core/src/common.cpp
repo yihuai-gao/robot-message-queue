@@ -18,6 +18,8 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <pwd.h>
+#include <sys/types.h>
 
 namespace py = pybind11;
 
@@ -132,6 +134,23 @@ std::string bytes_to_hex(const std::string &bytes)
         hex_stream << std::setw(2) << static_cast<int>(byte);
     }
     return hex_stream.str();
+}
+
+std::string get_user_name()
+{
+    char *user_name = getlogin();
+    if (user_name == nullptr)
+    {
+        uid_t uid = getuid();
+        struct passwd *pw = getpwuid(uid);
+        if (pw == nullptr)
+        {
+            printf("Failed to get user_name. Using uid: %d\n", uid);
+            return std::to_string(uid);
+        }
+        return std::string(pw->pw_name);
+    }
+    return std::string(user_name);
 }
 
 SharedMemoryDataInfo::SharedMemoryDataInfo(const std::string &shm_name, uint64_t shm_size_bytes, uint64_t shm_start_idx,

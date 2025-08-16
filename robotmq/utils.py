@@ -70,6 +70,11 @@ def deserialize(data: bytes) -> Any:
 
 
 def clear_shared_memory():
+    try:
+        user_name = os.getlogin()
+    except FileNotFoundError as e:
+        user_name = os.getuid()
+
     for file in os.listdir("/dev/shm"):
-        if file.startswith(f"rmq_{os.getlogin()}_"):
+        if file.startswith(f"rmq_{user_name}_"):
             os.remove(f"/dev/shm/{file}")

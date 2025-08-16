@@ -1,6 +1,6 @@
 {
     "C_Cpp.clang_format_style": "Microsoft",
-    "editor.formatOnSave": true,
+    // "editor.formatOnSave": true,
     "files.associations": {
         "*.ino": "cpp",
         "*.m": "matlab",

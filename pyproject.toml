@@ -11,13 +11,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "robotmq"
-version = "0.1.7"
+version = "0.1.8"
 authors = [{ name = "Yihuai Gao", email = "yihuai@stanford.edu" }]
 description = "A light-weight and flexible Robot-centric Message Queue for Python applications"
-dependencies = [
-    "numpy",
-    "psutil", # For memory monitoring
-]
 
 classifiers = [
     "Programming Language :: Python :: 3",

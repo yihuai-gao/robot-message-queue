@@ -27,12 +27,15 @@ class RMQClient
     // -1 if the server or topic does not exist: get no reply after timeout_s seconds
     // 0 if the topic exists but has no data
     // positive number means the number of data in the topic
+    pybind11::tuple peek_data(const std::string &topic, int32_t n, double timeout_s);
     pybind11::tuple peek_data(const std::string &topic, int32_t n);
+    pybind11::tuple pop_data(const std::string &topic, int32_t n, double timeout_s);
     pybind11::tuple pop_data(const std::string &topic, int32_t n);
+    void put_data(const std::string &topic, const pybind11::bytes &data, double timeout_s);
     void put_data(const std::string &topic, const pybind11::bytes &data);
     pybind11::tuple get_last_retrieved_data();
+    pybind11::bytes request_with_data(const std::string &topic, const pybind11::bytes &data, double timeout_s);
     pybind11::bytes request_with_data(const std::string &topic, const pybind11::bytes &data);
-    pybind11::bytes request_with_shared_memory(const std::string &topic, const pybind11::bytes &data);
 
     double get_timestamp();
     void reset_start_time(int64_t system_time_us);
@@ -40,7 +43,7 @@ class RMQClient
   private:
     const int MAX_RETRIES_ = 800;
     int retries_ = 0;
-    int default_timeout_ms_ = 1000;
+    double default_timeout_s_ = 1.0;
     std::map<std::string, bool> topic_using_shared_memory_;
     std::vector<TimedPtr> deserialize_multiple_data_(const std::string &data);
     std::vector<TimedPtr> send_request_(RMQMessage &message);
