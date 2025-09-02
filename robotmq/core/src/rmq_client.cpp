@@ -177,7 +177,7 @@ pybind11::bytes RMQClient::request_with_data(const std::string &topic, const pyb
         ssize_t length;
         PYBIND11_BYTES_AS_STRING_AND_SIZE(data.ptr(), &new_data_buffer, &length);
 
-        std::string request_shm_name = "rmq_" + get_user_name() + "_" + client_name_ + "_" + topic + "_request";
+        std::string request_shm_name = "rmq_" + get_user_name() + "_" + get_pid() + "_" + client_name_ + "_" + topic + "_request";
         int shm_fd = shm_open(request_shm_name.c_str(), O_CREAT | O_RDWR, 0666);
         if (shm_fd == -1)
         {

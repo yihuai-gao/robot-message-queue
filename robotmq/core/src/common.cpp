@@ -153,6 +153,12 @@ std::string get_user_name()
     return std::string(user_name);
 }
 
+std::string get_pid()
+{
+    pid_t pid = getpid();
+    return std::to_string(pid);
+}
+
 SharedMemoryDataInfo::SharedMemoryDataInfo(const std::string &shm_name, uint64_t shm_size_bytes, uint64_t shm_start_idx,
                                            uint64_t data_size_bytes)
     : shm_name_(shm_name), shm_size_bytes_(shm_size_bytes), shm_start_idx_(shm_start_idx),

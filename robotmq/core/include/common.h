@@ -32,6 +32,7 @@ double bytes_to_double(const std::string &bytes);
 std::string bytes_to_hex(const std::string &bytes);
 
 std::string get_user_name();
+std::string get_pid();
 
 class SharedMemoryDataInfo
 {
