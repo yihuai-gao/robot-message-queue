@@ -11,9 +11,8 @@
 ## Features
 
 - C++ multi-threading supports fully asynchronous data manipulation without taking up Python main thread
-- ZMQ as the communication backend, supports both tcp and ipc (inter-process communication), ~200 MB/s locally and ~20 MB/s over the network
-- No restriction to data type, as long as it can be serialized to bytes (`pickle.dumps()` for arbitrary data or `robotmq.utils.serialize()` for nested list/dict/tuple of numpy arrays)
-- TODO: for the same physical machine, implement shared memory for faster communication
+- Supports both **C++ shared memory** and tcp connection through ZMQ, achieving **~2 GB/s locally** and ~20 MB/s over the network.
+- No restriction to data type, as long as it can be serialized to bytes (`robotmq.utils.serialize()`, which is a wrapper for `pickle.dumps` that better manages numpy arrays accross different numpy versions)
 
 ## Use Cases
 
@@ -22,7 +21,7 @@
 
 ## Installation
 
-The prebuilt wheels for Linux x86_64 are available on [pypi](https://pypi.org/project/robotmq/).
+The prebuilt wheels for Linux x86_64 and aarch64 are available on [pypi](https://pypi.org/project/robotmq/).
 
 ```bash
 pip install robotmq
