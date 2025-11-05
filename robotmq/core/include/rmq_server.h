@@ -23,7 +23,8 @@
 class RMQServer
 {
   public:
-    RMQServer(const std::string &server_name, const std::string &server_endpoint);
+    RMQServer(const std::string &server_name, const std::string &server_endpoint); // Default log level is info
+    RMQServer(const std::string &server_name, const std::string &server_endpoint, spdlog::level::level_enum log_level);
     ~RMQServer();
     void add_topic(const std::string &topic, double message_remaining_time_s);
     void add_shared_memory_topic(const std::string &topic, double message_remaining_time_s,

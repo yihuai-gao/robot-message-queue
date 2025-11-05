@@ -5,7 +5,7 @@ This software is released under the MIT License.
 https://opensource.org/licenses/MIT
 """
 
-from robotmq import RMQServer
+from robotmq import RMQServer, LogLevel
 import time
 import numpy as np
 import numpy.typing as npt
@@ -21,7 +21,7 @@ class TestClass:
 
 
 def test_server():
-    server = RMQServer("asynchronous_server", "tcp://0.0.0.0:5555")
+    server = RMQServer("asynchronous_server", "tcp://0.0.0.0:5555", LogLevel.INFO)
     print("Server created")
 
     # 3 different ways to serialize data. Also applies for synchronous server.

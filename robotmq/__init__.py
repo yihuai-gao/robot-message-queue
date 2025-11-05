@@ -10,6 +10,7 @@ from .core.robotmq_core import (
     RMQServer,
     steady_clock_us,
     system_clock_us,
+    LogLevel,
 )
 from .utils import serialize, deserialize
 
@@ -21,4 +22,5 @@ __all__ = [
     "system_clock_us",
     "serialize",
     "deserialize",
+    "LogLevel",
 ]

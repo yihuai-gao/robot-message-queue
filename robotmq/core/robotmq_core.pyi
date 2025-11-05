@@ -8,8 +8,17 @@ https://opensource.org/licenses/MIT
 def steady_clock_us() -> int: ...
 def system_clock_us() -> int: ...
 
+class LogLevel:
+    TRACE: "LogLevel"
+    DEBUG: "LogLevel"
+    INFO: "LogLevel"
+    WARNING: "LogLevel"
+    ERROR: "LogLevel"
+    CRITICAL: "LogLevel"
+    OFF: "LogLevel"
+
 class RMQServer:
-    def __init__(self, server_name: str, server_endpoint: str) -> None: ...
+    def __init__(self, server_name: str, server_endpoint: str, log_level: LogLevel=LogLevel.INFO) -> None: ...
     def add_topic(self, topic: str, message_remaining_time_s: float) -> None: ...
     def add_shared_memory_topic(
         self, topic: str, message_remaining_time_s: float, shared_memory_size_gb: float
@@ -52,7 +61,7 @@ class RMQServer:
     def reply_request(self, topic: str, data: bytes) -> None: ...
 
 class RMQClient:
-    def __init__(self, client_name: str, server_endpoint: str) -> None: ...
+    def __init__(self, client_name: str, server_endpoint: str, log_level: LogLevel=LogLevel.INFO) -> None: ...
     def get_topic_status(self, topic: str, timeout_s: float) -> int:
         """
         Get the status of a specified topic.

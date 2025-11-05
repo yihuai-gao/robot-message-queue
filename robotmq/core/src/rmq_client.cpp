@@ -13,6 +13,11 @@
 #include <unistd.h>
 
 RMQClient::RMQClient(const std::string &client_name, const std::string &server_endpoint)
+    : RMQClient(client_name, server_endpoint, spdlog::level::info)
+{
+}
+
+RMQClient::RMQClient(const std::string &client_name, const std::string &server_endpoint, spdlog::level::level_enum log_level)
     : client_name_(client_name), context_(1), socket_(context_, zmq::socket_type::req),
       steady_clock_start_time_us_(steady_clock_us()), last_retrieved_ptrs_()
 {
@@ -21,6 +26,7 @@ RMQClient::RMQClient(const std::string &client_name, const std::string &server_e
     {
         logger_ = spdlog::stdout_color_mt(client_name);
     }
+    logger_->set_level(log_level);
     logger_->set_pattern("[%H:%M:%S %n %^%l%$] %v");
     socket_.connect(server_endpoint);
 }

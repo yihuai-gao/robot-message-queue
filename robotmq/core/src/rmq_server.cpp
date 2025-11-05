@@ -10,7 +10,14 @@
 #include <filesystem>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
+
 RMQServer::RMQServer(const std::string &server_name, const std::string &server_endpoint)
+    : RMQServer::RMQServer(server_name, server_endpoint, spdlog::level::info)
+{
+}
+
+RMQServer::RMQServer(const std::string &server_name, const std::string &server_endpoint, 
+spdlog::level::level_enum log_level)
     : server_name_(server_name), context_(1), socket_(context_, zmq::socket_type::rep), running_(false),
       steady_clock_start_time_us_(steady_clock_us()), poller_timeout_ms_(1000)
 {
@@ -19,8 +26,10 @@ RMQServer::RMQServer(const std::string &server_name, const std::string &server_e
     {
         logger_ = spdlog::stdout_color_mt(server_name);
     }
-    logger_->set_pattern("[%H:%M:%S %n %^%l%$] %v");
 
+    logger_->set_level(log_level);
+
+    logger_->set_pattern("[%H:%M:%S %n %^%l%$] %v");
     logger_->info("Starting server `{}` on endpoint `{}`", server_name, server_endpoint);
 
     // Only accept tcp and ipc endpoints
@@ -37,7 +46,16 @@ RMQServer::RMQServer(const std::string &server_name, const std::string &server_e
             std::filesystem::create_directories(directory);
         }
     }
-    socket_.bind(server_endpoint);
+    try
+    {
+        socket_.bind(server_endpoint);
+    }
+    catch (const zmq::error_t &e)
+    {
+        logger_->error("Failed to bind to endpoint {}: {}", server_endpoint, e.what());
+        throw std::runtime_error("Failed to bind to endpoint " + server_endpoint + ": " + e.what());
+    }
+
     running_ = true;
     poller_item_ = {socket_, 0, ZMQ_POLLIN, 0};
     background_thread_ = std::thread(&RMQServer::background_loop_, this);

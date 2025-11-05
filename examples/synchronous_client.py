@@ -13,7 +13,7 @@ from robotmq.utils import serialize, deserialize
 
 
 def test_request_with_data():
-    client = robotmq.RMQClient("test_client", "tcp://localhost:5555")
+    client = robotmq.RMQClient("test_client", "tcp://localhost:5555", robotmq.LogLevel.WARNING)
     # input_data = serialize(np.array([1, 2, 3], dtype=np.float64))
     topics = ["test_shm_topic", "test_topic"]
     for topic in topics:

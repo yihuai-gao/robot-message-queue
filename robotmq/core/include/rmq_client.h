@@ -20,6 +20,7 @@
 class RMQClient
 {
   public:
+    RMQClient(const std::string &client_name, const std::string &server_endpoint, spdlog::level::level_enum log_level);
     RMQClient(const std::string &client_name, const std::string &server_endpoint);
     ~RMQClient();
 

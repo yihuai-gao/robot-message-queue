@@ -17,7 +17,7 @@ from robotmq.utils import clear_shared_memory
 def test_communication():
     clear_shared_memory()
     server = rmq.RMQServer(
-        server_name="test_rmq_server", server_endpoint="ipc:///tmp/feeds/0"
+        server_name="test_rmq_server", server_endpoint="ipc:///tmp/feeds/0", log_level=rmq.LogLevel.INFO
     )
     client = rmq.RMQClient(
         client_name="test_rmq_client", server_endpoint="ipc:///tmp/feeds/0"
