@@ -48,6 +48,8 @@ spdlog::level::level_enum log_level)
     }
     try
     {
+        int linger_value = 100; // Linger for 100ms. So it will not always be in TIME_WAIT state.
+        socket_.setsockopt(ZMQ_LINGER, &linger_value, sizeof(linger_value));
         socket_.bind(server_endpoint);
     }
     catch (const zmq::error_t &e)
