@@ -22,7 +22,7 @@ PYBIND11_MODULE(robotmq_core, m)
     m.def("steady_clock_us", &steady_clock_us);
     m.def("system_clock_us", &system_clock_us);
 
-    py::enum_<spdlog::level::level_enum>(m, "LogLevel")
+    py::enum_<spdlog::level::level_enum>(m, "RMQLogLevel")
         .value("TRACE", spdlog::level::level_enum::trace)
         .value("DEBUG", spdlog::level::level_enum::debug)
         .value("INFO", spdlog::level::level_enum::info)

@@ -11,7 +11,7 @@ import time
 import numpy as np
 import numpy.typing as npt
 
-from robotmq.core.robotmq_core import LogLevel
+from robotmq.core.robotmq_core import RMQLogLevel
 from robotmq.utils import deserialize
 
 
@@ -22,7 +22,7 @@ class TestClass:  # This class can be defined in client's environment as well (i
 
 
 def test_client():
-    client = RMQClient("asynchronous_client", "tcp://localhost:5555", LogLevel.INFO)
+    client = RMQClient("asynchronous_client", "tcp://localhost:5555", RMQLogLevel.INFO)
     print("Client created")
 
     while True:
