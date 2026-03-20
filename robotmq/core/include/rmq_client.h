@@ -25,18 +25,16 @@ class RMQClient
     ~RMQClient();
 
     int get_topic_status(const std::string &topic, double timeout_s);
-    // -1 if the server or topic does not exist: get no reply after timeout_s seconds
+    // If timeout_s is negative, will wait forever
+    // If timeout_s is non-negative, will return -2 if the server cannot be connected after timeout_s seconds.
+    // -1 if the topic does not exist
     // 0 if the topic exists but has no data
     // positive number means the number of data in the topic
-    pybind11::tuple peek_data(const std::string &topic, int32_t n, double timeout_s);
-    pybind11::tuple peek_data(const std::string &topic, int32_t n);
-    pybind11::tuple pop_data(const std::string &topic, int32_t n, double timeout_s);
-    pybind11::tuple pop_data(const std::string &topic, int32_t n);
-    void put_data(const std::string &topic, const pybind11::bytes &data, double timeout_s);
-    void put_data(const std::string &topic, const pybind11::bytes &data);
+    pybind11::tuple peek_data(const std::string &topic, int32_t n, double timeout_s, bool automatic_resend);
+    pybind11::tuple pop_data(const std::string &topic, int32_t n, double timeout_s, bool automatic_resend);
+    void put_data(const std::string &topic, const pybind11::bytes &data, double timeout_s, bool automatic_resend);
     pybind11::tuple get_last_retrieved_data();
-    pybind11::bytes request_with_data(const std::string &topic, const pybind11::bytes &data, double timeout_s);
-    pybind11::bytes request_with_data(const std::string &topic, const pybind11::bytes &data);
+    pybind11::bytes request_with_data(const std::string &topic, const pybind11::bytes &data, double timeout_s, bool automatic_resend);
 
     double get_timestamp();
     void reset_start_time(int64_t system_time_us);
@@ -47,8 +45,7 @@ class RMQClient
     double default_timeout_s_ = 1.0;
     std::map<std::string, bool> topic_using_shared_memory_;
     std::vector<TimedPtr> deserialize_multiple_data_(const std::string &data);
-    std::vector<TimedPtr> send_request_(RMQMessage &message);
-    std::vector<TimedPtr> send_request_(RMQMessage &message, double timeout_s);
+    std::vector<TimedPtr> send_request_(RMQMessage &message, double timeout_s, bool automatic_resend);
     pybind11::tuple ptrs_to_tuple_(const std::vector<TimedPtr> &ptrs);
     std::string client_name_;
     std::shared_ptr<spdlog::logger> logger_;

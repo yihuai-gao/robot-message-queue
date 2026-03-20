@@ -68,18 +68,18 @@ class RMQClient:
 
         Args:
             topic: The topic name to get status from
-            timeout_s: Timeout in seconds
+            timeout_s: Timeout in seconds. If negative, will wait forever.
 
         Returns:
             int: The status of the topic
-                -2 if the server does not exist (getting no reply after timeout_s seconds)
-                -1 if topic does not exist
+                -2 if the server cannot be connected after timeout_s seconds
+                -1 if the topic does not exist
                 0 if the topic exists but has no data
                 positive number means the number of data in the topic
         """
         ...
 
-    def peek_data(self, topic: str, n: int, timeout_s: float = 1.0) -> tuple[list[bytes], list[float]]:
+    def peek_data(self, topic: str, n: int, timeout_s: float = 1.0, automatic_resend: bool = True) -> tuple[list[bytes], list[float]]:
         """Peek at data from a specified topic without removing it.
 
         Args:
@@ -94,7 +94,7 @@ class RMQClient:
         """
         ...
 
-    def pop_data(self, topic: str, n: int, timeout_s: float = 1.0) -> tuple[list[bytes], list[float]]:
+    def pop_data(self, topic: str, n: int, timeout_s: float = 1.0, automatic_resend: bool = True) -> tuple[list[bytes], list[float]]:
         """Pop data from a specified topic.
 
         Args:
@@ -109,7 +109,7 @@ class RMQClient:
         """
         ...
 
-    def put_data(self, topic: str, data: bytes, timeout_s: float = 1.0) -> None:
+    def put_data(self, topic: str, data: bytes, timeout_s: float = 1.0, automatic_resend: bool = True) -> None:
         """
         Put data into a specified topic.
 
@@ -122,4 +122,4 @@ class RMQClient:
     def get_last_retrieved_data(self) -> tuple[bytes, str]: ...
     def get_timestamp(self) -> float: ...
     def reset_start_time(self, system_time_us: int) -> None: ...
-    def request_with_data(self, topic: str, data: bytes, timeout_s: float = 1.0) -> bytes: ...
+    def request_with_data(self, topic: str, data: bytes, timeout_s: float = 1.0, automatic_resend: bool = True) -> bytes: ...

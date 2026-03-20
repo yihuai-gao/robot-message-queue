@@ -28,7 +28,7 @@ def test_client():
     while True:
         status = client.get_topic_status("test_raw_np", 0.1)
         if status == -2:
-            print("Server does not exist")
+            print("Server cannot be connected after 0.1 seconds")
         elif status == -1:
             print("Topic does not exist")
         elif status >= 0:
@@ -38,7 +38,8 @@ def test_client():
 
     while True:
         start_time = time.time()
-        raw_data_list, timestamps = client.pop_data("test_raw_np", 1)
+        raw_data_list, timestamps = client.pop_data("test_raw_np", 1, timeout_s=0.1, automatic_resend=False) 
+        # For some applications, once the server is shut down, the client should throw an error and exit as well. In this case, set automatic_resend to False.
         end_popping_time = time.time()
         if raw_data_list:
             # You can also use pickle to deserialize the arbitrary data
@@ -47,12 +48,12 @@ def test_client():
                 f"Received numpy data: shape: {data.shape}, size: {data.nbytes / 1024**2:.3f}MB, receiving time: {end_popping_time - start_time:.3f}s"
             )
 
-        nested_data_list, timestamps = client.pop_data("test_nested_np", 1)
+        nested_data_list, timestamps = client.pop_data("test_nested_np", 1, automatic_resend=False)
         if nested_data_list:
             nested_data = deserialize(nested_data_list[0])
             print(f"Received nested data: {nested_data}")
 
-        pickle_data_list, timestamps = client.pop_data("test_pickle", 1)
+        pickle_data_list, timestamps = client.pop_data("test_pickle", 1, automatic_resend=False)
         if pickle_data_list:
             pickle_data = pickle.loads(pickle_data_list[0])
             assert isinstance(pickle_data, TestClass)
@@ -60,7 +61,7 @@ def test_client():
                 f"Received pickle data type: {type(pickle_data)}, attrs: name={pickle_data.name}, data={pickle_data.data}"
             )
 
-        client.put_data("put_data_test", b"test")
+        client.put_data("put_data_test", b"test", automatic_resend=False)
 
         time.sleep(0.1)
 
