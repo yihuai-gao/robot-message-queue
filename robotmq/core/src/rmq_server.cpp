@@ -257,6 +257,9 @@ void RMQServer::reset_start_time(int64_t system_time_us)
     }
     // Use system time to make sure different servers and clients are synchronized
     steady_clock_start_time_us_ = steady_clock_us() + (system_time_us - system_clock_us());
+    // Clear the cache
+    cached_reply_data_.clear();
+    last_request_timestamp_.clear();
 }
 
 std::vector<TimedPtr> RMQServer::peek_data_ptrs_(const std::string &topic, int32_t n)
@@ -353,6 +356,27 @@ void RMQServer::process_request_(RMQMessage &message)
     }
 
     case CmdType::REQUEST_WITH_DATA: {
+        // Check if this is a duplicate retry of a request we already processed
+        auto ts_it = last_request_timestamp_.find(message.topic());
+        if (ts_it != last_request_timestamp_.end() &&
+            ts_it->second == message.timestamp())
+        {
+            auto cache_it = cached_reply_data_.find(message.topic());
+            if (cache_it != cached_reply_data_.end())
+            {
+                logger_->info("Skipping duplicate REQUEST_WITH_DATA for topic: {}", message.topic());
+                socket_.send(zmq::message_t(cache_it->second.data(), cache_it->second.size()),
+                             zmq::send_flags::none);
+                break;
+            }
+        }
+        else
+        {
+            // New (non-duplicate) request: clear stale cached reply for this topic
+            cached_reply_data_.erase(message.topic());
+        }
+
+        last_request_timestamp_[message.topic()] = message.timestamp();
         add_data_ptrs_(message.topic(), message.data_ptrs());
         {
             std::lock_guard<std::mutex> lock(get_new_request_mutex_);
@@ -370,6 +394,8 @@ void RMQServer::process_request_(RMQMessage &message)
                     std::vector<TimedPtr> reply_ptrs = pop_data_ptrs_(message.topic(), 0); // Pop all data
                     RMQMessage reply(message.topic(), CmdType::REQUEST_WITH_DATA, get_timestamp(), reply_ptrs);
                     std::string reply_data = reply.serialize();
+                    // Cache the reply for deduplication of subsequent retries
+                    cached_reply_data_[message.topic()] = reply_data;
                     socket_.send(zmq::message_t(reply_data.data(), reply_data.size()), zmq::send_flags::none);
                     break;
                 }

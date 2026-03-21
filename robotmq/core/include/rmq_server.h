@@ -54,6 +54,10 @@ class RMQServer
     std::string reply_topic_ = "";
     std::mutex reply_mutex_;
 
+    // Cache for deduplicating REQUEST_WITH_DATA retries
+    std::unordered_map<std::string, double> last_request_timestamp_;
+    std::unordered_map<std::string, std::string> cached_reply_data_;
+
     std::unordered_map<std::string, DataTopic> data_topics_;
     std::shared_ptr<spdlog::logger> logger_;
 
