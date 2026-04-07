@@ -28,6 +28,8 @@ RMQClient::RMQClient(const std::string &client_name, const std::string &server_e
     }
     logger_->set_level(log_level);
     logger_->set_pattern("[%H:%M:%S %n %^%l%$] %v");
+    int linger_value = 100;
+    socket_.setsockopt(ZMQ_LINGER, &linger_value, sizeof(linger_value));
     socket_.connect(server_endpoint);
 }
 
@@ -85,6 +87,8 @@ int RMQClient::get_topic_status(const std::string &topic, double timeout_s)
     std::string endpoint = socket_.get(zmq::sockopt::last_endpoint);
     socket_.close();
     socket_ = zmq::socket_t(context_, zmq::socket_type::req);
+    int linger_value = 100;
+    socket_.setsockopt(ZMQ_LINGER, &linger_value, sizeof(linger_value));
     socket_.connect(endpoint);
     retries_++;
     if (retries_ > MAX_RETRIES_)
@@ -272,6 +276,8 @@ std::vector<TimedPtr> RMQClient::send_request_(RMQMessage &message, double timeo
         std::string endpoint = socket_.get(zmq::sockopt::last_endpoint);
         socket_.close();
         socket_ = zmq::socket_t(context_, zmq::socket_type::req);
+        int linger_value = 100;
+        socket_.setsockopt(ZMQ_LINGER, &linger_value, sizeof(linger_value));
         socket_.connect(endpoint);
         if (!automatic_resend)
         {
