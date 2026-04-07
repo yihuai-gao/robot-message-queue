@@ -27,9 +27,9 @@ def server_client(endpoint):
     return server, client
 
 
-@pytest.fixture(autouse=True)
-def cleanup_shm():
-    """Clean up shared memory before and after each test."""
+@pytest.fixture(autouse=True, scope="session")
+def cleanup_shm_session():
+    """Clean up stale shared memory at start and end of the test session."""
     clear_shared_memory()
     yield
     clear_shared_memory()

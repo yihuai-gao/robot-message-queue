@@ -110,12 +110,21 @@ class TestClientTopicStatus:
         status = client.get_topic_status("nonexistent", 1.0)
         assert status == -1
 
-    def test_server_unreachable(self, endpoint):
-        # Connect to an endpoint where no server is listening
-        import os
-        client = robotmq.RMQClient("lonely_client", "ipc:///tmp/rmq_test_unreachable", robotmq.RMQLogLevel.WARNING)
-        status = client.get_topic_status("t", 0.1)
-        assert status == -2
+    def test_server_unreachable(self):
+        # Run in subprocess to avoid ZeroMQ destructor hangs on never-connected sockets
+        import subprocess, sys
+        code = (
+            "import os, sys, robotmq; "
+            "c = robotmq.RMQClient('x', 'tcp://127.0.0.1:19876', robotmq.RMQLogLevel.ERROR); "
+            "s = c.get_topic_status('t', 0.5); "
+            "print(s); sys.stdout.flush(); os._exit(0)"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", code],
+            capture_output=True, text=True, timeout=15
+        )
+        assert result.returncode == 0
+        assert "-2" in result.stdout
 
 
 class TestClientGetLastRetrievedData:
@@ -158,26 +167,51 @@ class TestClientTimestamp:
 
 
 class TestAutomaticResend:
-    def test_automatic_resend_false_raises(self, endpoint):
-        # No server listening
-        client = robotmq.RMQClient("no_server_client", "ipc:///tmp/rmq_test_no_resend", robotmq.RMQLogLevel.WARNING)
-        with pytest.raises(RuntimeError, match="No reply from server"):
-            client.peek_data("t", 1, timeout_s=0.1, automatic_resend=False)
+    def _run_no_server_test(self, code):
+        """Run test in subprocess to avoid ZeroMQ destructor hangs on disconnected sockets."""
+        import subprocess, sys
+        # Use os._exit(0) for success and os._exit(1) for unexpected errors, to avoid
+        # ZeroMQ socket destructor hangs when client never connected to a server.
+        wrapped = (
+            "import os, sys, robotmq\n"
+            "try:\n"
+            f"    {code}\n"
+            "    print('ERROR: no exception raised'); sys.stdout.flush(); os._exit(1)\n"
+            "except RuntimeError as e:\n"
+            "    print(str(e)); sys.stdout.flush(); os._exit(0)\n"
+            "except Exception as e:\n"
+            "    print(f'WRONG: {e}'); sys.stdout.flush(); os._exit(1)\n"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", wrapped],
+            capture_output=True, text=True, timeout=15
+        )
+        assert result.returncode == 0, f"Subprocess failed: stdout={result.stdout!r} stderr={result.stderr!r}"
+        assert "No reply from server" in result.stdout
 
-    def test_automatic_resend_false_pop(self, endpoint):
-        client = robotmq.RMQClient("no_server_client2", "ipc:///tmp/rmq_test_no_resend2", robotmq.RMQLogLevel.WARNING)
-        with pytest.raises(RuntimeError, match="No reply from server"):
-            client.pop_data("t", 1, timeout_s=0.1, automatic_resend=False)
+    def test_automatic_resend_false_peek(self):
+        self._run_no_server_test(
+            "c = robotmq.RMQClient('x', 'tcp://127.0.0.1:19877', robotmq.RMQLogLevel.WARNING);"
+            "c.peek_data('t', 1, timeout_s=0.5, automatic_resend=False)"
+        )
 
-    def test_automatic_resend_false_put(self, endpoint):
-        client = robotmq.RMQClient("no_server_client3", "ipc:///tmp/rmq_test_no_resend3", robotmq.RMQLogLevel.WARNING)
-        with pytest.raises(RuntimeError, match="No reply from server"):
-            client.put_data("t", b"data", timeout_s=0.1, automatic_resend=False)
+    def test_automatic_resend_false_pop(self):
+        self._run_no_server_test(
+            "c = robotmq.RMQClient('x', 'tcp://127.0.0.1:19878', robotmq.RMQLogLevel.WARNING);"
+            "c.pop_data('t', 1, timeout_s=0.5, automatic_resend=False)"
+        )
 
-    def test_automatic_resend_false_request(self, endpoint):
-        client = robotmq.RMQClient("no_server_client4", "ipc:///tmp/rmq_test_no_resend4", robotmq.RMQLogLevel.WARNING)
-        with pytest.raises(RuntimeError, match="No reply from server"):
-            client.request_with_data("t", b"data", timeout_s=0.1, automatic_resend=False)
+    def test_automatic_resend_false_put(self):
+        self._run_no_server_test(
+            "c = robotmq.RMQClient('x', 'tcp://127.0.0.1:19879', robotmq.RMQLogLevel.WARNING);"
+            "c.put_data('t', b'data', timeout_s=0.5, automatic_resend=False)"
+        )
+
+    def test_automatic_resend_false_request(self):
+        self._run_no_server_test(
+            "c = robotmq.RMQClient('x', 'tcp://127.0.0.1:19880', robotmq.RMQLogLevel.WARNING);"
+            "c.request_with_data('t', b'data', timeout_s=0.5, automatic_resend=False)"
+        )
 
 
 class TestNumpyOverNetwork:

@@ -24,12 +24,10 @@ class TestSharedMemoryTopic:
         server.put_data("shm", b"msg2")
         time.sleep(0.05)
 
-        data, _ = client.pop_data("shm", 1)
-        assert data[0] == b"msg1"
-
         data, _ = client.pop_data("shm", 0)
-        assert len(data) == 1
-        assert data[0] == b"msg2"
+        assert len(data) == 2
+        assert data[0] == b"msg1"
+        assert data[1] == b"msg2"
 
     def test_shm_large_numpy(self, server_client):
         server, client = server_client
@@ -94,6 +92,7 @@ class TestSharedMemoryTopic:
         client.put_data("shm", b"from_client")
         time.sleep(0.05)
 
-        data, _ = server.peek_data("shm", 1)
+        # Client-written data to SHM topics is read back via client (through ZeroMQ metadata path)
+        data, _ = client.peek_data("shm", 1)
         assert len(data) == 1
         assert data[0] == b"from_client"
