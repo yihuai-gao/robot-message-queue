@@ -5,13 +5,9 @@ This software is released under the MIT License.
 https://opensource.org/licenses/MIT
 """
 
-from robotmq import RMQServer
+from robotmq import RMQServer, serialize, deserialize
 import time
 import numpy as np
-import numpy.typing as npt
-
-from robotmq.utils import deserialize, serialize
-import pickle
 
 
 def test_mixed_server():

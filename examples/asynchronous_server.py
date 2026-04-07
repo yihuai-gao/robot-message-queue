@@ -5,12 +5,9 @@ This software is released under the MIT License.
 https://opensource.org/licenses/MIT
 """
 
-from robotmq import RMQServer, RMQLogLevel
+from robotmq import RMQServer, RMQLogLevel, serialize
 import time
 import numpy as np
-import numpy.typing as npt
-
-from robotmq.utils import serialize
 import pickle
 
 

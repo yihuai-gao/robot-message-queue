@@ -6,9 +6,6 @@ https://opensource.org/licenses/MIT
 """
 
 import robotmq as rmq
-import time
-import pickle
-import numpy as np
 
 
 def test_corner_cases():

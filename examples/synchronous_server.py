@@ -6,9 +6,8 @@ https://opensource.org/licenses/MIT
 """
 
 import robotmq
+from robotmq import serialize, deserialize
 import numpy as np
-import numpy.typing as npt
-from robotmq.utils import serialize, deserialize
 import time
 
 

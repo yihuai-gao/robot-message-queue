@@ -9,8 +9,10 @@ import robotmq as rmq
 import time
 import pickle
 import numpy as np
-import numpy.typing as npt
-import psutil
+try:
+    import psutil
+except ImportError:
+    psutil = None
 
 
 def get_memory_usage():

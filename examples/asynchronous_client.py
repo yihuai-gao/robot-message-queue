@@ -6,13 +6,9 @@ https://opensource.org/licenses/MIT
 """
 
 import pickle
-from robotmq import RMQClient
+from robotmq import RMQClient, RMQLogLevel, deserialize
 import time
 import numpy as np
-import numpy.typing as npt
-
-from robotmq.core.robotmq_core import RMQLogLevel
-from robotmq.utils import deserialize
 
 
 class TestClass:  # This class can be defined in client's environment as well (if cannot be imported from server)

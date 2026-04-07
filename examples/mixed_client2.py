@@ -5,17 +5,12 @@ This software is released under the MIT License.
 https://opensource.org/licenses/MIT
 """
 
-from robotmq import RMQServer
+from robotmq import RMQClient, serialize, deserialize
 import time
 import numpy as np
-import numpy.typing as npt
-
-from robotmq.core.robotmq_core import RMQClient
-from robotmq.utils import deserialize, serialize
-import pickle
 
 
-def test_mixed_client1():
+def test_mixed_client2():
     """
     Simulate the policy training process
     """
@@ -26,7 +21,7 @@ def test_mixed_client1():
         while True:
             status = client.get_topic_status("ckpt_name", 0.5)
             if status == -2:
-                print("Server does not exist")
+                print("Server cannot be connected after 0.5 seconds")
             elif status == -1:
                 print("Topic does not exist")
             elif status >= 0:
@@ -49,4 +44,4 @@ def test_mixed_client1():
 
 
 if __name__ == "__main__":
-    test_mixed_client1()
+    test_mixed_client2()

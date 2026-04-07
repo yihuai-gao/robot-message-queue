@@ -6,10 +6,9 @@ https://opensource.org/licenses/MIT
 """
 
 import robotmq
+from robotmq import serialize, deserialize
 import numpy as np
-import numpy.typing as npt
 import time
-from robotmq.utils import serialize, deserialize
 
 
 def test_request_with_data():
