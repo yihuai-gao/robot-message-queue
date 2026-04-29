@@ -26,6 +26,21 @@ pip install robotmq
 - **Peripheral readout** (camera, spacemouse, etc.): run a dedicated reader process with an `RMQServer`, then `peek`/`pop` data from your main program via `RMQClient`.
 - **Detached policy inference**: run your neural network on a GPU server with an `RMQServer`, send observations and receive actions from the robot controller via `RMQClient`.
 
+## Citation
+
+This package is developed during the following research project. If you find it useful, please cite our corresponding paper:
+```latex
+@misc{gao2026gatedmemorypolicy,
+  title         = {Gated Memory Policy},
+  author        = {Yihuai Gao and Jinyun Liu and Shuang Li and Shuran Song},
+  year          = {2026},
+  eprint        = {2604.18933},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.RO},
+  url           = {https://arxiv.org/abs/2604.18933},
+}
+```
+
 ---
 
 ## Table of Contents
