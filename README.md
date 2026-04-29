@@ -28,7 +28,7 @@ pip install robotmq
 
 ## Citation
 
-This package is developed during the following research project. If you find it useful, please cite our corresponding paper:
+This package is developed during the following [research project](https://github.com/real-stanford/gated-memory-policy). If you find it useful, please cite our corresponding paper:
 ```latex
 @misc{gao2026gatedmemorypolicy,
   title         = {Gated Memory Policy},
