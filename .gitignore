@@ -5,3 +5,4 @@ pyrightconfig.json
 __pycache__
 dist
 wheelhouse
+.claude/settings.local.json

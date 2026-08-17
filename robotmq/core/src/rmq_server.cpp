@@ -463,9 +463,38 @@ void RMQServer::background_loop_()
         zmq::message_t request;
         if (poller_item_.revents & ZMQ_POLLIN)
         {
-            socket_.recv(request);
-            RMQMessage message(std::string(request.data<char>(), request.data<char>() + request.size()));
-            process_request_(message);
+            // A malformed or unparsable frame must never terminate the process: this loop runs on a
+            // native background thread, so any uncaught exception here calls std::terminate (SIGABRT).
+            bool received = false;
+            try
+            {
+                socket_.recv(request);
+                received = true;
+                RMQMessage message(std::string(request.data<char>(), request.data<char>() + request.size()));
+                process_request_(message);
+            }
+            catch (const std::exception &e)
+            {
+                logger_->error("Failed to handle an incoming request ({} bytes): {}. Dropping the message.",
+                               request.size(), e.what());
+                // The REP socket state machine requires a reply after every successful recv; without
+                // one it wedges (EFSM) for all subsequent requests. Send a best-effort error reply.
+                // If recv itself failed, no reply is owed and sending one would violate the state machine.
+                if (received)
+                {
+                    try
+                    {
+                        RMQMessage reply("invalid_request", CmdType::ERROR, get_timestamp(),
+                                         std::string("Server failed to process the request: ") + e.what());
+                        std::string reply_data = reply.serialize();
+                        socket_.send(zmq::message_t(reply_data.data(), reply_data.size()), zmq::send_flags::none);
+                    }
+                    catch (const std::exception &reply_error)
+                    {
+                        logger_->error("Failed to send error reply for the malformed request: {}", reply_error.what());
+                    }
+                }
+            }
         }
     }
 }

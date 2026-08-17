@@ -28,11 +28,21 @@ RMQMessage::RMQMessage(const std::string &topic, CmdType cmd, double timestamp, 
 
 RMQMessage::RMQMessage(const std::string &serialized)
 {
-    uint8_t topic_length = static_cast<uint8_t>(serialized[0]);
-    if (serialized.size() < sizeof(uint8_t) + topic_length)
+    // Wire layout: [uint8 topic_length][topic][int8 cmd][double timestamp][data...]
+    constexpr size_t fixed_fields_size = sizeof(uint8_t) + sizeof(CmdType) + sizeof(double);
+    if (serialized.size() < fixed_fields_size)
     {
-        throw std::invalid_argument("Serialized message is too short, size: " + std::to_string(serialized.size()) +
-                                    ", expected at least: " + std::to_string(sizeof(uint8_t) + topic_length));
+        throw std::invalid_argument(
+            "Serialized message is too short to contain the fixed header fields (topic length, cmd, timestamp), "
+            "size: " +
+            std::to_string(serialized.size()) + ", expected at least: " + std::to_string(fixed_fields_size));
+    }
+    uint8_t topic_length = static_cast<uint8_t>(serialized[0]);
+    if (serialized.size() < fixed_fields_size + topic_length)
+    {
+        throw std::invalid_argument("Serialized message is too short to contain the topic (topic length " +
+                                    std::to_string(topic_length) + "), size: " + std::to_string(serialized.size()) +
+                                    ", expected at least: " + std::to_string(fixed_fields_size + topic_length));
     }
     int decode_start_index = sizeof(uint8_t);
     topic_ =
