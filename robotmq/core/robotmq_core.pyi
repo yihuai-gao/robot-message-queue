@@ -18,7 +18,28 @@ class RMQLogLevel:
     OFF: "RMQLogLevel"
 
 class RMQServer:
-    def __init__(self, server_name: str, server_endpoint: str, log_level: RMQLogLevel=RMQLogLevel.INFO) -> None: ...
+    def __init__(
+        self,
+        server_name: str,
+        server_endpoint: str,
+        log_level: RMQLogLevel = RMQLogLevel.INFO,
+        allowed_ips: list[str] = [],
+    ) -> None:
+        """Create a message-queue server.
+
+        Args:
+            server_name: Human-readable name used for logging.
+            server_endpoint: ZMQ endpoint to bind, e.g. ``tcp://*:5555`` or ``ipc:///tmp/rmq``.
+            log_level: Logging verbosity.
+            allowed_ips: Optional whitelist of client IPv4/IPv6 addresses. When empty (the default)
+                every peer is served. When non-empty, only requests whose source IP is in the list
+                are processed; others receive an error reply. Only applies to ``tcp://`` endpoints
+                (``ipc://`` peers have no IP and the whitelist is ignored with a warning). Each entry
+                must be a valid IP address or a ``ValueError`` is raised; entries are canonicalized
+                before matching. The server's TCP socket is currently IPv4-only (libzmq's default),
+                so IPv6 entries are accepted for forward compatibility but will not match any peer.
+        """
+        ...
     def add_topic(self, topic: str, message_remaining_time_s: float) -> None: ...
     def add_shared_memory_topic(
         self, topic: str, message_remaining_time_s: float, shared_memory_size_gb: float

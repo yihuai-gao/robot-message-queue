@@ -45,8 +45,10 @@ PYBIND11_MODULE(robotmq_core, m)
         .def("request_with_data", py::overload_cast<const std::string &, const pybind11::bytes &, double, bool>(&RMQClient::request_with_data), py::arg("topic"), py::arg("data"), py::arg("timeout_s")=1.0, py::arg("automatic_resend")=true);
 
     py::class_<RMQServer>(m, "RMQServer")
-        .def(py::init<const std::string &, const std::string &>(), py::arg("server_name"), py::arg("server_endpoint"))
-        .def(py::init<const std::string &, const std::string &, spdlog::level::level_enum>(), py::arg("server_name"), py::arg("server_endpoint"), py::arg("log_level"))
+        .def(py::init<const std::string &, const std::string &, spdlog::level::level_enum,
+                      const std::vector<std::string> &>(),
+             py::arg("server_name"), py::arg("server_endpoint"), py::arg("log_level") = spdlog::level::info,
+             py::arg("allowed_ips") = std::vector<std::string>{})
         .def("add_topic", &RMQServer::add_topic, py::arg("topic"), py::arg("message_remaining_time_s"))
         .def("add_shared_memory_topic", &RMQServer::add_shared_memory_topic, py::arg("topic"),
              py::arg("message_remaining_time_s"), py::arg("shared_memory_size_gb"))

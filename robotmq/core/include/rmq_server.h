@@ -14,6 +14,7 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "common.h"
@@ -25,6 +26,11 @@ class RMQServer
   public:
     RMQServer(const std::string &server_name, const std::string &server_endpoint); // Default log level is info
     RMQServer(const std::string &server_name, const std::string &server_endpoint, spdlog::level::level_enum log_level);
+    // allowed_ips restricts which client IPs are served. An empty list (the default) accepts every
+    // peer, preserving the previous behavior. The whitelist only applies to tcp:// endpoints (ipc://
+    // peers have no IP address); it is ignored with a warning for non-tcp endpoints.
+    RMQServer(const std::string &server_name, const std::string &server_endpoint, spdlog::level::level_enum log_level,
+              const std::vector<std::string> &allowed_ips);
     ~RMQServer();
     void add_topic(const std::string &topic, double message_remaining_time_s);
     void add_shared_memory_topic(const std::string &topic, double message_remaining_time_s,
@@ -42,6 +48,10 @@ class RMQServer
   private:
     const std::string server_name_;
     bool running_;
+    // Set once in the constructor and only read afterwards (including from the background thread),
+    // so no lock is needed to consult them.
+    const std::unordered_set<std::string> allowed_ips_;
+    const bool enforce_ip_whitelist_;
     int64_t steady_clock_start_time_us_;
     zmq::context_t context_;
     zmq::socket_t socket_;
@@ -68,6 +78,10 @@ class RMQServer
     void add_data_ptrs_(const std::string &topic, const std::vector<TimedPtr> &data_ptrs);
     bool exists_topic_(const std::string &topic);
     std::function<TimedPtr(const TimedPtr)> request_with_data_handler_;
+
+    // Reads the peer's IP (the ZMQ "Peer-Address" metadata) into peer_address and returns whether it
+    // is allowed. When the whitelist is not enforced this always returns true.
+    bool is_peer_allowed_(zmq::message_t &request, std::string &peer_address);
 
     void background_loop_();
 };

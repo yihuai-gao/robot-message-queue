@@ -187,7 +187,8 @@ A single server supports both patterns simultaneously:
 #### Constructor
 
 ```python
-RMQServer(server_name: str, server_endpoint: str, log_level: RMQLogLevel = RMQLogLevel.INFO)
+RMQServer(server_name: str, server_endpoint: str, log_level: RMQLogLevel = RMQLogLevel.INFO,
+          allowed_ips: list[str] = [])
 ```
 
 | Parameter | Description | Example |
@@ -195,11 +196,35 @@ RMQServer(server_name: str, server_endpoint: str, log_level: RMQLogLevel = RMQLo
 | `server_name` | Unique name for this server instance (used in logging and SHM paths) | `"robot_server"` |
 | `server_endpoint` | ZeroMQ endpoint to bind to | `"tcp://*:5555"` or `"ipc:///tmp/feeds/0"` |
 | `log_level` | Logging verbosity | `RMQLogLevel.INFO` |
+| `allowed_ips` | Client IP whitelist. Empty (default) accepts every peer | `["192.168.1.10", "192.168.1.11"]` |
 
 **Endpoint formats:**
 - `tcp://*:PORT` — Listen on all interfaces (use for network communication)
 - `tcp://0.0.0.0:PORT` — Same as above, explicit bind-all
 - `ipc:///path/to/socket` — Unix domain socket (local only, lower latency than TCP)
+
+**Client IP whitelist (`allowed_ips`):**
+
+When `allowed_ips` is non-empty, the server only processes requests whose source IP is in the
+list; any other peer receives an error reply (surfaced on the client as a `RuntimeError`) and its
+request is dropped. An empty list — the default — serves every peer, so existing code is unaffected.
+Each entry must be a valid IPv4 or IPv6 address (otherwise the constructor raises `ValueError`).
+
+```python
+# Only accept requests from these two robots
+server = robotmq.RMQServer("robot_server", "tcp://*:5555",
+                           allowed_ips=["192.168.1.10", "192.168.1.11"])
+```
+
+The whitelist applies to `tcp://` endpoints only — `ipc://` peers have no IP address, so it is
+ignored (with a warning) for non-TCP endpoints. Entries are canonicalized before matching (e.g.
+`FE80::0:1` becomes `fe80::1`). The server's TCP socket is currently IPv4-only (libzmq's default;
+`ZMQ_IPV6` is not enabled), so IPv6 entries are accepted for forward compatibility but will not
+match any peer. Note that an IP whitelist is a guardrail against
+misconfigured or stray clients, not a substitute for real authentication: on a LAN a determined
+attacker can still spoof a whitelisted source IP (e.g. via ARP poisoning). For untrusted networks,
+combine it with OS-level firewall rules or a cryptographic transport (ZMQ CURVE, or a WireGuard/SSH
+tunnel).
 
 #### Topic Management
 

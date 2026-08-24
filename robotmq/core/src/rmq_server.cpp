@@ -7,19 +7,69 @@
 
 #include "rmq_server.h"
 #include "common.h"
+#include <arpa/inet.h>
 #include <filesystem>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
 
+namespace
+{
+// Parses an IPv4 or IPv6 address and returns its canonical textual form (e.g. "FE80::0:1" ->
+// "fe80::1"), or an empty string if the address is invalid. Canonical form matters because the
+// whitelist is matched by exact string comparison against ZMQ's "Peer-Address" metadata, which
+// libzmq reports in canonical form.
+std::string canonicalize_ip(const std::string &ip)
+{
+    unsigned char buf[sizeof(struct in6_addr)];
+    char canonical[INET6_ADDRSTRLEN];
+    if (inet_pton(AF_INET, ip.c_str(), buf) == 1 && inet_ntop(AF_INET, buf, canonical, sizeof(canonical)))
+    {
+        return canonical;
+    }
+    if (inet_pton(AF_INET6, ip.c_str(), buf) == 1 && inet_ntop(AF_INET6, buf, canonical, sizeof(canonical)))
+    {
+        return canonical;
+    }
+    return "";
+}
+
+// Validates every entry and builds the lookup set of canonical addresses. Throws
+// std::invalid_argument (surfaced to Python as ValueError) on the first malformed address so the
+// user learns about a typo at construction time.
+std::unordered_set<std::string> build_allowed_ip_set(const std::vector<std::string> &allowed_ips)
+{
+    std::unordered_set<std::string> result;
+    for (const std::string &ip : allowed_ips)
+    {
+        std::string canonical = canonicalize_ip(ip);
+        if (canonical.empty())
+        {
+            throw std::invalid_argument("Invalid IP address in allowed_ips: `" + ip +
+                                        "`. Expected a valid IPv4 or IPv6 address.");
+        }
+        result.insert(canonical);
+    }
+    return result;
+}
+} // namespace
+
 RMQServer::RMQServer(const std::string &server_name, const std::string &server_endpoint)
-    : RMQServer::RMQServer(server_name, server_endpoint, spdlog::level::info)
+    : RMQServer::RMQServer(server_name, server_endpoint, spdlog::level::info, {})
 {
 }
 
-RMQServer::RMQServer(const std::string &server_name, const std::string &server_endpoint, 
-spdlog::level::level_enum log_level)
-    : server_name_(server_name), context_(1), socket_(context_, zmq::socket_type::rep), running_(false),
-      steady_clock_start_time_us_(steady_clock_us()), poller_timeout_ms_(1000)
+RMQServer::RMQServer(const std::string &server_name, const std::string &server_endpoint,
+                     spdlog::level::level_enum log_level)
+    : RMQServer::RMQServer(server_name, server_endpoint, log_level, {})
+{
+}
+
+RMQServer::RMQServer(const std::string &server_name, const std::string &server_endpoint,
+                     spdlog::level::level_enum log_level, const std::vector<std::string> &allowed_ips)
+    : server_name_(server_name), running_(false), allowed_ips_(build_allowed_ip_set(allowed_ips)),
+      enforce_ip_whitelist_(!allowed_ips.empty() && server_endpoint.rfind("tcp://", 0) == 0),
+      steady_clock_start_time_us_(steady_clock_us()), context_(1), socket_(context_, zmq::socket_type::rep),
+      poller_timeout_ms_(1000)
 {
     logger_ = spdlog::get(server_name);
     if (!logger_)
@@ -36,6 +86,26 @@ spdlog::level::level_enum log_level)
     if (server_endpoint.find("tcp://") != 0 && server_endpoint.find("ipc://") != 0)
     {
         throw std::invalid_argument("Server endpoint must start with tcp:// or ipc://");
+    }
+
+    if (!allowed_ips_.empty())
+    {
+        if (enforce_ip_whitelist_)
+        {
+            std::string joined;
+            for (const std::string &ip : allowed_ips_)
+            {
+                joined += (joined.empty() ? "" : ", ") + ip;
+            }
+            logger_->info("IP whitelist enabled. Only requests from these {} IP(s) will be processed: {}",
+                          allowed_ips_.size(), joined);
+        }
+        else
+        {
+            logger_->warn("allowed_ips was provided but the endpoint `{}` is not tcp://. IP whitelisting only "
+                          "applies to tcp endpoints and will be ignored.",
+                          server_endpoint);
+        }
     }
     if (server_endpoint.find("ipc://") == 0)
     {
@@ -455,6 +525,27 @@ void RMQServer::process_request_(RMQMessage &message)
     }
 }
 
+bool RMQServer::is_peer_allowed_(zmq::message_t &request, std::string &peer_address)
+{
+    peer_address.clear();
+    if (!enforce_ip_whitelist_)
+    {
+        return true;
+    }
+    try
+    {
+        // For tcp:// peers this metadata is the client's bare IP address (no port), e.g. "192.168.1.5".
+        peer_address = request.gets("Peer-Address");
+    }
+    catch (const zmq::error_t &)
+    {
+        // The property is absent (e.g. non-tcp peer). Without a verifiable IP the peer cannot be
+        // matched against the whitelist, so treat it as not allowed.
+        return false;
+    }
+    return allowed_ips_.find(peer_address) != allowed_ips_.end();
+}
+
 void RMQServer::background_loop_()
 {
     while (running_)
@@ -470,6 +561,18 @@ void RMQServer::background_loop_()
             {
                 socket_.recv(request);
                 received = true;
+                std::string peer_address;
+                if (!is_peer_allowed_(request, peer_address))
+                {
+                    logger_->warn("Rejected request from non-whitelisted peer `{}`.", peer_address);
+                    // The REP socket owes exactly one reply per recv (see the malformed-frame handling
+                    // below), so answer with an ERROR instead of silently dropping the request.
+                    RMQMessage reply("unauthorized", CmdType::ERROR, get_timestamp(),
+                                     "Client IP `" + peer_address + "` is not in the server's allowed_ips whitelist.");
+                    std::string reply_data = reply.serialize();
+                    socket_.send(zmq::message_t(reply_data.data(), reply_data.size()), zmq::send_flags::none);
+                    continue;
+                }
                 RMQMessage message(std::string(request.data<char>(), request.data<char>() + request.size()));
                 process_request_(message);
             }
