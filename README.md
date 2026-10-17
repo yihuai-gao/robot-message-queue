@@ -663,6 +663,30 @@ pip install .
 
 **Build dependencies:** C++17 compiler, CMake, ZeroMQ, cppzmq, spdlog, Boost, pybind11, fmt.
 
+### Building a release
+
+Commit tracked changes, then build wheels from that local commit using Docker:
+
+```bash
+bash wheels/build_wheels.sh x86_64
+# To build both platforms, Docker must also support running ARM64 containers:
+# bash wheels/build_wheels.sh x86_64 aarch64
+```
+
+The build installs each Python 3.8–3.14 wheel into a fresh environment and runs
+the test suite. Optional torch tests are skipped there when torch is absent.
+Completed wheels, checksums, and the source commit are saved under
+`wheels/wheelhouse/<version>/`; an existing build is backed up under `build/`.
+
+```bash
+bash wheels/upload_to_pypi.sh --check  # Verify checksums and package metadata
+bash wheels/upload_to_pypi.sh          # Publish the verified release in one invocation
+```
+
+The upload script creates a local Twine environment under `build/` as needed
+and uses your usual PyPI credentials. `wheels/upload_to_test_pypi.sh` provides
+the same flow for TestPyPI.
+
 ---
 
 ## Troubleshooting

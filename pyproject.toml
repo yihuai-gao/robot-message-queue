@@ -14,6 +14,7 @@ name = "robotmq"
 version = "0.1.16"
 authors = [{ name = "Yihuai Gao", email = "yihuai@stanford.edu" }]
 description = "A light-weight and flexible Robot-centric Message Queue for Python applications"
+readme = "README.md"
 # robotmq/utils.py imports numpy at module import time; without this a bare
 # `pip install robotmq` in a clean environment fails on `import robotmq`.
 dependencies = ["numpy"]

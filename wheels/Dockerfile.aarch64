@@ -45,49 +45,8 @@ RUN git clone https://github.com/gabime/spdlog.git && \
     make install
 
 ARG ROBOTMQ_COMMIT
+LABEL org.opencontainers.image.revision=$ROBOTMQ_COMMIT
 
-RUN echo "ROBOTMQ_COMMIT: $ROBOTMQ_COMMIT"
-
-RUN git clone https://github.com/yihuai-gao/robot-message-queue.git && \
-    cd robot-message-queue && \
-    git checkout $ROBOTMQ_COMMIT
-
-COPY CMakeLists.txt robot-message-queue/CMakeLists.txt
-
-RUN yum install -y tmux
-
-RUN cd robot-message-queue && \
-    set -e && \
-    # There are unknown bugs in cp312 (core dump)
-    for PYTHON_VERSION in cp38-cp38 cp39-cp39 cp310-cp310 cp311-cp311 cp312-cp312 cp313-cp313 cp314-cp314; do \
-    /opt/python/${PYTHON_VERSION}/bin/python -m venv ${PYTHON_VERSION} && \
-    source ${PYTHON_VERSION}/bin/activate && \
-    pip install pybind11 && \
-    pip install -e . && \
-    pip wheel . && \
-    PACKAGE_VERSION=$(grep "version = " pyproject.toml | sed 's/version = "\(.*\)"/\1/') && \
-    auditwheel repair robotmq-${PACKAGE_VERSION}-${PYTHON_VERSION}-linux_aarch64.whl; \
-    rm robotmq/core/*.so; \
-    done
-
-# RUN cd robot-message-queue && \
-#     set -e && \
-#     # Install GNU Parallel
-#     yum install -y parallel && \
-#     # Create a function to build wheel for a single Python version
-#     echo 'build_wheel() { \
-#     PYTHON_VERSION=$1; \
-#     /opt/python/${PYTHON_VERSION}/bin/python -m venv ${PYTHON_VERSION} && \
-#     source ${PYTHON_VERSION}/bin/activate && \
-#     pip install pybind11 && \
-#     pip install -e . && \
-#     pip wheel . && \
-#     auditwheel repair robotmq-0.1.0-${PYTHON_VERSION}-linux_aarch64.whl; \
-#     }' > build_wheel.sh && \
-#     # Export the function and make script executable
-#     chmod +x build_wheel.sh && \
-#     source build_wheel.sh && \
-#     export -f build_wheel && \
-#     # Run builds in parallel
-#     echo "cp38-cp38 cp39-cp39 cp310-cp310 cp311-cp311 cp312-cp312 cp313-cp313" | \
-#     tr ' ' '\n' | parallel build_wheel
+WORKDIR /root/robot-message-queue
+COPY . .
+RUN bash wheels/build_in_container.sh
