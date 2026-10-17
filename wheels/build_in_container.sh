@@ -29,7 +29,7 @@ for abi in cp38-cp38 cp39-cp39 cp310-cp310 cp311-cp311 cp312-cp312 cp313-cp313 c
     fi
     "/opt/python/$abi/bin/python" -m venv "/testenvs/$abi"
     test_python="/testenvs/$abi/bin/python"
-    "$test_python" -m pip install --disable-pip-version-check "${repaired[0]}" pytest
+    "$test_python" -m pip install --disable-pip-version-check "${repaired[0]}" pytest pyzmq
     cp -a "$source_dir/tests" "/checks/$abi/tests"
     cd "/checks/$abi"
     "$test_python" -c 'import robotmq; assert "/testenvs/" in robotmq.__file__, robotmq.__file__; print("Testing installed wheel:", robotmq.__file__)'
