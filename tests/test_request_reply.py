@@ -9,7 +9,7 @@ import time
 import numpy as np
 import pytest
 import robotmq
-from robotmq import serialize, deserialize
+from robotmq import safe_serialize, safe_deserialize
 
 
 ENDPOINT = "ipc:///tmp/rmq_test_rpc"
@@ -26,9 +26,9 @@ def _echo_server_process(endpoint, topic, ready_event, duration_s=10.0):
         req_data, req_topic = server.wait_for_request(0.5)
         if not req_topic:
             continue
-        data = deserialize(req_data)
+        data = safe_deserialize(req_data)
         if isinstance(data, np.ndarray):
-            reply = serialize(data + 1)
+            reply = safe_serialize(data + 1)
         else:
             reply = req_data
         server.reply_request(req_topic, reply)
@@ -45,9 +45,9 @@ def _echo_server_shm_process(endpoint, topic, ready_event, duration_s=10.0):
         req_data, req_topic = server.wait_for_request(0.5)
         if not req_topic:
             continue
-        data = deserialize(req_data)
+        data = safe_deserialize(req_data)
         if isinstance(data, np.ndarray):
-            reply = serialize(data + 1)
+            reply = safe_serialize(data + 1)
         else:
             reply = req_data
         server.reply_request(req_topic, reply)
@@ -79,8 +79,8 @@ class TestRequestReply:
             client = robotmq.RMQClient("rpc_client", endpoint, robotmq.RMQLogLevel.WARNING)
 
             arr = np.array([1.0, 2.0, 3.0])
-            reply = client.request_with_data("rpc", serialize(arr), timeout_s=5.0)
-            result = deserialize(reply)
+            reply = client.request_with_data("rpc", safe_serialize(arr), timeout_s=5.0)
+            result = safe_deserialize(reply)
             np.testing.assert_array_equal(result, arr + 1)
         finally:
             p.terminate()
@@ -96,8 +96,8 @@ class TestRequestReply:
             client = robotmq.RMQClient("rpc_shm_client", endpoint, robotmq.RMQLogLevel.WARNING)
 
             arr = np.random.rand(1000).astype(np.float64)
-            reply = client.request_with_data("rpc_shm", serialize(arr), timeout_s=5.0)
-            result = deserialize(reply)
+            reply = client.request_with_data("rpc_shm", safe_serialize(arr), timeout_s=5.0)
+            result = safe_deserialize(reply)
             np.testing.assert_array_equal(result, arr + 1)
         finally:
             p.terminate()
@@ -114,8 +114,8 @@ class TestRequestReply:
 
             for i in range(5):
                 arr = np.array([float(i)])
-                reply = client.request_with_data("rpc", serialize(arr), timeout_s=5.0)
-                result = deserialize(reply)
+                reply = client.request_with_data("rpc", safe_serialize(arr), timeout_s=5.0)
+                result = safe_deserialize(reply)
                 np.testing.assert_array_equal(result, arr + 1)
         finally:
             p.terminate()
@@ -145,8 +145,8 @@ class TestRequestReplyDeduplication:
             client = robotmq.RMQClient("dedup_client", endpoint, robotmq.RMQLogLevel.WARNING)
 
             arr = np.array([1.0, 2.0])
-            reply = client.request_with_data("dedup", serialize(arr), timeout_s=5.0)
-            result = deserialize(reply)
+            reply = client.request_with_data("dedup", safe_serialize(arr), timeout_s=5.0)
+            result = safe_deserialize(reply)
             np.testing.assert_array_equal(result, arr)
             assert call_count.value == 1
         finally:

@@ -95,7 +95,7 @@ Robotics Python programs frequently need to share data between processes — a c
 - **C++ background threads** handle all network I/O — Python never blocks on send/recv.
 - **Shared memory transport** for local communication achieves ~2 GB/s throughput for large numpy arrays.
 - **ZeroMQ transport** for network communication provides ~20 MB/s across machines with zero configuration.
-- **No message schema required** — any data that can be serialized to `bytes` works. The included `serialize()`/`deserialize()` utilities handle nested structures of numpy arrays without version conflicts.
+- **No message schema required** — any data that can be serialized to `bytes` works. The included `safe_serialize()`/`safe_deserialize()` utilities handle nested structures of numpy arrays without version conflicts.
 - **Automatic message expiration** — old messages are discarded based on a configurable time window, preventing unbounded memory growth.
 - **Minimal API surface** — two classes (`RMQServer`, `RMQClient`) and a handful of methods cover all use cases.
 
@@ -196,7 +196,7 @@ RMQServer(server_name: str, server_endpoint: str, log_level: RMQLogLevel = RMQLo
 | `server_name` | Unique name for this server instance (used in logging and SHM paths) | `"robot_server"` |
 | `server_endpoint` | ZeroMQ endpoint to bind to | `"tcp://*:5555"` or `"ipc:///tmp/feeds/0"` |
 | `log_level` | Logging verbosity | `RMQLogLevel.INFO` |
-| `allowed_ips` | Client IP whitelist. Empty (default) accepts every peer | `["192.168.1.10", "192.168.1.11"]` |
+| `allowed_ips` | Client IP whitelist: IPv4 addresses or CIDR networks. Empty (default) accepts every peer | `["192.168.1.10", "10.42.0.0/16"]` |
 
 **Endpoint formats:**
 - `tcp://*:PORT` — Listen on all interfaces (use for network communication)
@@ -205,22 +205,24 @@ RMQServer(server_name: str, server_endpoint: str, log_level: RMQLogLevel = RMQLo
 
 **Client IP whitelist (`allowed_ips`):**
 
-When `allowed_ips` is non-empty, the server only processes requests whose source IP is in the
-list; any other peer receives an error reply (surfaced on the client as a `RuntimeError`) and its
-request is dropped. An empty list — the default — serves every peer, so existing code is unaffected.
-Each entry must be a valid IPv4 or IPv6 address (otherwise the constructor raises `ValueError`).
+When `allowed_ips` is non-empty, the server only processes requests whose source IP matches an
+entry; any other peer receives an error reply (surfaced on the client as a `RuntimeError`) and its
+request is dropped (logged at warn level on the first rejection while that peer is cached, then
+at debug level; the cache is cleared at 1,024 peers). An empty list — the
+default — serves every peer, so existing code is unaffected. Each entry is a single IPv4 address
+(`"192.168.1.10"`) or an IPv4 CIDR network (`"192.168.1.0/24"`); malformed entries — including
+IPv6 entries (the server socket is IPv4-only, so they could never match a peer) and CIDR networks
+with host bits set, e.g. `192.168.1.5/24` — raise `ValueError` at construction time.
 
 ```python
-# Only accept requests from these two robots
+# Accept the two cameras plus everything on the robot subnet
 server = robotmq.RMQServer("robot_server", "tcp://*:5555",
-                           allowed_ips=["192.168.1.10", "192.168.1.11"])
+                           allowed_ips=["192.168.1.10", "192.168.1.11", "10.42.0.0/16"])
 ```
 
-The whitelist applies to `tcp://` endpoints only — `ipc://` peers have no IP address, so it is
-ignored (with a warning) for non-TCP endpoints. Entries are canonicalized before matching (e.g.
-`FE80::0:1` becomes `fe80::1`). The server's TCP socket is currently IPv4-only (libzmq's default;
-`ZMQ_IPV6` is not enabled), so IPv6 entries are accepted for forward compatibility but will not
-match any peer. Note that an IP whitelist is a guardrail against
+The whitelist applies to `tcp://` endpoints only — `ipc://` peers have no IP address (and are
+local-only anyway), so it is ignored (with a warning) for non-TCP endpoints. Note that an IP
+whitelist is a guardrail against
 misconfigured or stray clients, not a substitute for real authentication: on a LAN a determined
 attacker can still spoof a whitelisted source IP (e.g. via ARP poisoning). For untrusted networks,
 combine it with OS-level firewall rules or a cryptographic transport (ZMQ CURVE, or a WireGuard/SSH
@@ -378,13 +380,14 @@ Synchronizes the client's internal clock with a system timestamp.
 ### Utility Functions
 
 ```python
-from robotmq import serialize, deserialize          # top-level exports
-from robotmq.utils import clear_shared_memory       # only available from robotmq.utils
+from robotmq import safe_serialize, safe_deserialize, UnsafePayloadError  # top-level exports
+from robotmq import serialize, deserialize            # legacy, deprecated (see below)
+from robotmq.utils import clear_shared_memory         # only available from robotmq.utils
 ```
 
-#### `serialize(data: Any) -> bytes`
+#### `safe_serialize(data: Any) -> bytes`
 
-Recursively serializes arbitrarily nested structures (dicts, lists, tuples) containing numpy arrays and other picklable types. Numpy arrays are converted to `(raw_bytes, dtype_str, shape_tuple)` before pickling, which avoids numpy version incompatibilities between sender and receiver.
+Recursively serializes arbitrarily nested structures (dicts, lists, tuples) of plain Python values and numpy arrays. Numpy arrays are converted to `(raw_bytes, dtype_str, shape_tuple)` before pickling, which avoids numpy version incompatibilities between sender and receiver. Anything that could only be rebuilt by running code on the receiver is refused on send (`TypeError`, with the path of the offending element).
 
 ```python
 data = {
@@ -392,17 +395,42 @@ data = {
     "joints": np.array([0.1, 0.2, 0.3]),
     "metadata": {"timestamp": 1234.5, "frame_id": 42}
 }
-payload = serialize(data)  # safe to send across numpy versions
+payload = safe_serialize(data)  # safe to send across numpy versions
 ```
 
-#### `deserialize(data: bytes) -> Any`
+#### `safe_deserialize(data: bytes) -> Any`
 
-Reverse of `serialize()`. Automatically detects and reconstructs numpy arrays from the `(bytes, dtype_str, shape)` representation. Returns `None` with a warning if given empty bytes.
+Reverse of `safe_serialize()`. Automatically detects and reconstructs numpy arrays from the `(bytes, dtype_str, shape)` representation. Returns `None` with a warning if given empty bytes.
+
+A pickle can import any module and call any callable while it loads, so running plain `pickle.loads` on bytes that arrive from the network lets one malicious payload execute arbitrary code in the receiving process. Before unpickling, `safe_deserialize()` validates the stream with the standard library's opcode parser: it checks primitive opcodes, stack operations, memo indices, frame boundaries, the exact final STOP, and tuple/key complexity. Global lookups, reducers, persistent ids, extension codes and external buffers are refused. A restricted unpickler provides a second guard against global lookups and persistent ids. Reconstruction then runs under budgets for container entries, dictionary key work and array bytes.
 
 ```python
-result = deserialize(payload)
+result = safe_deserialize(payload)
 # result["image"].shape == (480, 640, 3)
+try:
+    obs = safe_deserialize(request_data)
+except UnsafePayloadError:   # normal decoding refusals; resource exhaustion may escape
+    ...
 ```
+
+- **What travels:** `dict`, `list`, `tuple`, `str`, `bytes`, `int`, `float`, `bool`, `None` (exact builtin types; `OrderedDict` / `defaultdict` / `namedtuple` are flattened to plain containers), numpy arrays of bool / int / uint / float dtype with itemsize ≤ 8 in any memory layout (C, Fortran, strided, big-endian), numpy scalars whose `.item()` is a plain Python value (converted on send: `np.float32` arrives as `float`, so it widens to 64 bits; `np.str_` / `np.bytes_` arrive as `str` / `bytes`), and torch tensors (non-nested, strided layout, every dtype including bfloat16; conjugate / negative views are resolved; rebuilt on the CPU, bit-exact).
+- **What is refused on send** (`TypeError` naming the path of the offending element): `bytearray`, `set` / `frozenset`, subclasses of the builtin leaves (`IntEnum`, `str` subclasses, ...), custom objects (dataclasses, pathlib paths, ...), object / string / void / complex / datetime / longdouble arrays, complex / datetime / timedelta / longdouble scalars, sparse / quantized / nested / meta torch tensors, and any dict containing the reserved key `"__robotmq_torch_tensor__"`.
+- **What is refused on receive** (`UnsafePayloadError`, a subclass of both `pickle.UnpicklingError` and `ValueError`): any payload that references a module or class (including a numpy scalar, a dataclass or a torch tensor pickled by the legacy `serialize()`), reducers, persistent ids, extension codes, external buffers, malformed or truncated streams, all trailing bytes after STOP (including within frames), payloads exceeding the complexity limits below, and forged tensor tags (unknown dtype name, bad shape, byte count mismatch).
+- **Complexity limits:** memo indices must be below the payload byte count; tuple and MARK nesting are capped at 128. Estimated key hashing work, rebuilt container entries plus key work, and rebuilt array/tensor bytes each have a wire-size budget. Extremely shared or deep payloads can be rejected even when produced by a legitimate writer. These checks prevent specific amplification attacks but are not a CPU or memory sandbox: applications still need appropriate input-size and resource limits, and pathological hash collisions or process-wide exhaustion are not covered by the decoding exception contract.
+- **Performance:** validation adds a full opcode pass on receive. Its cost is most visible for metadata-heavy messages with many small values; large array payloads have relatively few opcodes. Serialization and the wire format are unchanged.
+- **Receive-side leniency:** the reader enforces "no code runs", not the writer's type filter. A legacy client can still deliver `set` / `frozenset` values and arrays of any non-object dtype (complex, datetime, string, structured); object-dtype arrays arrive as the raw `(bytes, dtype_str, shape)` tuple, as with `deserialize()`.
+- **Caveats:** a user tuple of the exact form `(bytes, str, tuple)` is indistinguishable from an array when its dtype and shape are valid (same as `deserialize()`). NumPy arrays retain their dtype's byte order, recorded in `dtype.str`; torch tensor bytes have no byte-order marker, so tensor senders and receivers must share endianness. `torch` is imported when the tag marker and keys match, before its field values are validated; dtype names are checked against torch's dtype table without triggering lazy attribute lookup.
+
+Any server that is reachable from a network should use `safe_deserialize()`.
+
+#### Legacy (deprecated): `serialize(data: Any) -> bytes` / `deserialize(data: bytes) -> Any`
+
+The original pair remains importable from `robotmq` for backward compatibility, but both functions emit a `DeprecationWarning` on every call and will be removed in a future release. `deserialize()` runs `pickle.loads` on untrusted bytes, which can execute arbitrary code, and `serialize()` produces output that only `deserialize()` can fully read. Migration notes:
+
+- **Same wire format for plain payloads:** a payload of builtins and numpy arrays produces byte-identical output under `serialize()` and `safe_serialize()`, so mixed deployments interoperate during a rollout: a server that switched to `safe_deserialize()` keeps accepting legacy clients that send such payloads, and a legacy `deserialize()` client reads `safe_serialize()` replies.
+- **What no longer travels on send:** `set` / `frozenset`, `bytearray`, subclasses of builtins such as `IntEnum`, custom objects (dataclasses, pathlib paths, ...), object / string / complex / datetime / longdouble numpy arrays and the matching numpy scalars raise `TypeError` from `safe_serialize()`. Convert them to plain containers, `bytes` or numeric arrays before sending.
+- **Numpy scalars** (`np.float64(1.0)`, `np.int32(3)`, ...) are converted on send and arrive as Python `float` / `int` / `bool`.
+- **Torch tensors are safe <-> safe only:** they travel as a tagged dict (`{"__robotmq_torch_tensor__": 1, "dtype", "shape", "data"}`). Legacy `deserialize()` returns that dict as-is, and `safe_deserialize()` refuses a tensor pickled by legacy `serialize()`.
 
 #### `clear_shared_memory()`
 
@@ -442,7 +470,7 @@ A producer process reads from a sensor and publishes data; a consumer process re
 **Producer (Server):**
 ```python
 import robotmq
-from robotmq.utils import serialize
+from robotmq.utils import safe_serialize
 import numpy as np
 
 server = robotmq.RMQServer("sensor_server", "tcp://*:5555")
@@ -450,13 +478,13 @@ server.add_shared_memory_topic("camera", message_remaining_time_s=5.0, shared_me
 
 while True:
     frame = capture_camera_frame()  # returns np.ndarray
-    server.put_data("camera", serialize(frame))
+    server.put_data("camera", safe_serialize(frame))
 ```
 
 **Consumer (Client):**
 ```python
 import robotmq
-from robotmq.utils import deserialize
+from robotmq.utils import safe_deserialize
 
 client = robotmq.RMQClient("controller", "tcp://192.168.1.10:5555")
 
@@ -464,7 +492,7 @@ while True:
     # Get only the latest frame (n=-1), non-destructively
     data_list, timestamps = client.peek_data("camera", n=-1)
     if data_list:
-        frame = deserialize(data_list[0])
+        frame = safe_deserialize(data_list[0])
         process(frame)
 ```
 
@@ -480,7 +508,7 @@ A robot controller sends observations to a GPU server and receives actions back.
 **GPU Server:**
 ```python
 import robotmq
-from robotmq.utils import serialize, deserialize
+from robotmq.utils import safe_serialize, safe_deserialize
 
 server = robotmq.RMQServer("policy_server", "tcp://*:5555")
 server.add_shared_memory_topic("inference", message_remaining_time_s=10.0, shared_memory_size_gb=1.0)
@@ -492,22 +520,22 @@ while True:
     if not topic:  # timeout
         continue
     
-    observation = deserialize(request_data)
+    observation = safe_deserialize(request_data)
     action = model.predict(observation)
-    server.reply_request(topic, serialize(action))
+    server.reply_request(topic, safe_serialize(action))
 ```
 
 **Robot Controller (Client):**
 ```python
 import robotmq
-from robotmq.utils import serialize, deserialize
+from robotmq.utils import safe_serialize, safe_deserialize
 
 client = robotmq.RMQClient("robot", "tcp://gpu-server:5555")
 
 while True:
     obs = get_robot_observation()
-    action_bytes = client.request_with_data("inference", serialize(obs), timeout_s=5.0)
-    action = deserialize(action_bytes)
+    action_bytes = client.request_with_data("inference", safe_serialize(obs), timeout_s=5.0)
+    action = safe_deserialize(action_bytes)
     execute_action(action)
 ```
 
@@ -527,13 +555,13 @@ server.add_shared_memory_topic("inference", message_remaining_time_s=5.0, shared
 
 # In the main loop:
 # 1. Publish sensor data asynchronously
-server.put_data("joint_states", serialize(joint_positions))
+server.put_data("joint_states", safe_serialize(joint_positions))
 
 # 2. Handle inference requests synchronously
 request_data, topic = server.wait_for_request(timeout_s=0.01)
 if topic:
-    result = process_request(deserialize(request_data))
-    server.reply_request(topic, serialize(result))
+    result = process_request(safe_deserialize(request_data))
+    server.reply_request(topic, safe_serialize(result))
 ```
 
 ---
@@ -571,7 +599,7 @@ if topic:
 | **Topic management** | Manual implementation | Built-in topics with expiration and indexing |
 | **Shared memory** | Not included | Integrated SHM ring buffer |
 | **Request deduplication** | Manual implementation | Built-in for request-reply pattern |
-| **Serialization** | BYO | Included numpy-safe `serialize()`/`deserialize()` |
+| **Serialization** | BYO | Included numpy-safe `safe_serialize()`/`safe_deserialize()` |
 
 ### vs. Redis / RabbitMQ
 
@@ -602,7 +630,7 @@ if topic:
 | TCP, local loopback | ~500 MB/s | Depends on message size |
 | TCP, across network | ~20 MB/s | Limited by network bandwidth |
 | Message serialization (numpy) | ~1 GB/s | `tobytes()` is near-memcpy speed |
-| `serialize()`/`deserialize()` | Slightly slower | Adds pickle overhead for structure metadata |
+| `safe_serialize()`/`safe_deserialize()` | Slightly slower | Adds pickle overhead for structure metadata |
 
 **Memory usage:**
 - Regular topics: Messages stored in server process heap. Bounded by `message_remaining_time_s` × publish rate × message size.
@@ -641,7 +669,7 @@ pip install .
 
 ### Numpy version errors
 
-If you see errors related to `numpy._core` when exchanging data between processes with different numpy versions, use `serialize()` / `deserialize()` instead of `pickle.dumps()` / `pickle.loads()`. These can be imported directly from `robotmq` (`from robotmq import serialize, deserialize`). They convert numpy arrays to raw bytes with dtype metadata, avoiding version-specific pickle representations.
+If you see errors related to `numpy._core` when exchanging data between processes with different numpy versions, use `safe_serialize()` / `safe_deserialize()` instead of `pickle.dumps()` / `pickle.loads()`. These can be imported directly from `robotmq` (`from robotmq import safe_serialize, safe_deserialize`). They convert numpy arrays to raw bytes with dtype metadata, avoiding version-specific pickle representations, and `safe_deserialize()` never runs code from the stream. The legacy `serialize()` / `deserialize()` pair is deprecated and emits a `DeprecationWarning` on every call.
 
 ### Stale shared memory
 

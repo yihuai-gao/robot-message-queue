@@ -12,7 +12,13 @@ from .core.robotmq_core import (
     system_clock_us,
     RMQLogLevel,
 )
-from .utils import serialize, deserialize
+from .utils import (
+    serialize,
+    deserialize,
+    safe_serialize,
+    safe_deserialize,
+    UnsafePayloadError,
+)
 
 
 __all__ = [
@@ -22,5 +28,8 @@ __all__ = [
     "system_clock_us",
     "serialize",
     "deserialize",
+    "safe_serialize",
+    "safe_deserialize",
+    "UnsafePayloadError",
     "RMQLogLevel",
 ]

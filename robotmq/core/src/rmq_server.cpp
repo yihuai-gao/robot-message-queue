@@ -8,46 +8,124 @@
 #include "rmq_server.h"
 #include "common.h"
 #include <arpa/inet.h>
+#include <cstring>
 #include <filesystem>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
 
 namespace
 {
-// Parses an IPv4 or IPv6 address and returns its canonical textual form (e.g. "FE80::0:1" ->
-// "fe80::1"), or an empty string if the address is invalid. Canonical form matters because the
-// whitelist is matched by exact string comparison against ZMQ's "Peer-Address" metadata, which
-// libzmq reports in canonical form.
-std::string canonicalize_ip(const std::string &ip)
+// Bound on the once-per-peer rejection-warning set; past this the set is cleared (re-warning
+// occasionally) so spoofed source addresses cannot grow it without limit.
+constexpr size_t MAX_WARNED_REJECTED_IPS = 1024;
+
+// Returns true when every bit after the first prefix_len bits of addr is zero, i.e. the address is
+// a proper network address for its prefix (192.168.1.0/24 is, 192.168.1.5/24 is not).
+bool host_bits_zero(const unsigned char *addr, int prefix_len)
 {
-    unsigned char buf[sizeof(struct in6_addr)];
-    char canonical[INET6_ADDRSTRLEN];
-    if (inet_pton(AF_INET, ip.c_str(), buf) == 1 && inet_ntop(AF_INET, buf, canonical, sizeof(canonical)))
+    int byte_index = prefix_len / 8;
+    int remaining_bits = prefix_len % 8;
+    if (remaining_bits != 0)
     {
-        return canonical;
+        unsigned char host_mask = static_cast<unsigned char>(0xFF >> remaining_bits);
+        if (addr[byte_index] & host_mask)
+        {
+            return false;
+        }
+        ++byte_index;
     }
-    if (inet_pton(AF_INET6, ip.c_str(), buf) == 1 && inet_ntop(AF_INET6, buf, canonical, sizeof(canonical)))
+    for (; byte_index < 4; ++byte_index)
     {
-        return canonical;
+        if (addr[byte_index] != 0)
+        {
+            return false;
+        }
     }
-    return "";
+    return true;
 }
 
-// Validates every entry and builds the lookup set of canonical addresses. Throws
-// std::invalid_argument (surfaced to Python as ValueError) on the first malformed address so the
-// user learns about a typo at construction time.
-std::unordered_set<std::string> build_allowed_ip_set(const std::vector<std::string> &allowed_ips)
+bool network_contains(const AllowedNetwork &net, const unsigned char *addr)
 {
-    std::unordered_set<std::string> result;
-    for (const std::string &ip : allowed_ips)
+    int full_bytes = net.prefix_len / 8;
+    int remaining_bits = net.prefix_len % 8;
+    if (std::memcmp(net.addr, addr, full_bytes) != 0)
     {
-        std::string canonical = canonicalize_ip(ip);
-        if (canonical.empty())
+        return false;
+    }
+    if (remaining_bits == 0)
+    {
+        return true;
+    }
+    unsigned char network_mask = static_cast<unsigned char>(0xFF << (8 - remaining_bits));
+    return (net.addr[full_bytes] & network_mask) == (addr[full_bytes] & network_mask);
+}
+
+// Parses one allowed_ips entry: an IPv4 address ("192.168.1.10") or an IPv4 CIDR network
+// ("192.168.1.0/24"). IPv6 entries are rejected — the server socket is IPv4-only, so they could
+// never match a peer. Throws std::invalid_argument (surfaced to Python as ValueError) on a
+// malformed entry so the user learns about a typo at construction time.
+AllowedNetwork parse_allowed_entry(const std::string &entry)
+{
+    if (entry.find('\0') != std::string::npos)
+    {
+        throw std::invalid_argument("Invalid entry in allowed_ips: embedded NUL characters are not allowed.");
+    }
+    std::string ip_part = entry;
+    int prefix_len = -1;
+    size_t slash = entry.find('/');
+    if (slash != std::string::npos)
+    {
+        ip_part = entry.substr(0, slash);
+        std::string prefix_part = entry.substr(slash + 1);
+        bool valid_prefix = !prefix_part.empty() && prefix_part.size() <= 3 &&
+                            (prefix_part.size() == 1 || prefix_part[0] != '0'); // No leading zeros ("/024")
+        for (char c : prefix_part)
         {
-            throw std::invalid_argument("Invalid IP address in allowed_ips: `" + ip +
-                                        "`. Expected a valid IPv4 or IPv6 address.");
+            valid_prefix = valid_prefix && c >= '0' && c <= '9';
         }
-        result.insert(canonical);
+        if (!valid_prefix)
+        {
+            throw std::invalid_argument("Invalid CIDR prefix in allowed_ips entry `" + entry + "`.");
+        }
+        prefix_len = std::stoi(prefix_part);
+    }
+
+    AllowedNetwork net{};
+    if (inet_pton(AF_INET, ip_part.c_str(), net.addr) != 1)
+    {
+        unsigned char v6_probe[sizeof(struct in6_addr)];
+        if (inet_pton(AF_INET6, ip_part.c_str(), v6_probe) == 1)
+        {
+            throw std::invalid_argument("IPv6 entry in allowed_ips: `" + entry +
+                                        "`. The server socket is IPv4-only; only IPv4 addresses and CIDR networks "
+                                        "are supported.");
+        }
+        throw std::invalid_argument("Invalid entry in allowed_ips: `" + entry +
+                                    "`. Expected an IPv4 address (e.g. `192.168.1.10`) or a CIDR network "
+                                    "(e.g. `192.168.1.0/24`).");
+    }
+    net.prefix_len = (prefix_len < 0) ? 32 : prefix_len;
+    if (net.prefix_len > 32)
+    {
+        throw std::invalid_argument("Invalid CIDR prefix in allowed_ips entry `" + entry + "`: /" +
+                                    std::to_string(net.prefix_len) + " exceeds /32.");
+    }
+    if (!host_bits_zero(net.addr, net.prefix_len))
+    {
+        throw std::invalid_argument("Invalid CIDR network in allowed_ips entry `" + entry +
+                                    "`: host bits are set below the /" + std::to_string(net.prefix_len) +
+                                    " prefix. Use the network address instead (e.g. `192.168.1.0/24`).");
+    }
+    return net;
+}
+
+std::vector<AllowedNetwork> parse_allowed_networks(const std::vector<std::string> &allowed_ips)
+{
+    std::vector<AllowedNetwork> result;
+    result.reserve(allowed_ips.size());
+    for (const std::string &entry : allowed_ips)
+    {
+        result.push_back(parse_allowed_entry(entry));
     }
     return result;
 }
@@ -66,7 +144,7 @@ RMQServer::RMQServer(const std::string &server_name, const std::string &server_e
 
 RMQServer::RMQServer(const std::string &server_name, const std::string &server_endpoint,
                      spdlog::level::level_enum log_level, const std::vector<std::string> &allowed_ips)
-    : server_name_(server_name), running_(false), allowed_ips_(build_allowed_ip_set(allowed_ips)),
+    : server_name_(server_name), running_(false), allowed_networks_(parse_allowed_networks(allowed_ips)),
       enforce_ip_whitelist_(!allowed_ips.empty() && server_endpoint.rfind("tcp://", 0) == 0),
       steady_clock_start_time_us_(steady_clock_us()), context_(1), socket_(context_, zmq::socket_type::rep),
       poller_timeout_ms_(1000)
@@ -88,17 +166,17 @@ RMQServer::RMQServer(const std::string &server_name, const std::string &server_e
         throw std::invalid_argument("Server endpoint must start with tcp:// or ipc://");
     }
 
-    if (!allowed_ips_.empty())
+    if (!allowed_networks_.empty())
     {
         if (enforce_ip_whitelist_)
         {
             std::string joined;
-            for (const std::string &ip : allowed_ips_)
+            for (const std::string &entry : allowed_ips)
             {
-                joined += (joined.empty() ? "" : ", ") + ip;
+                joined += (joined.empty() ? "" : ", ") + entry;
             }
-            logger_->info("IP whitelist enabled. Only requests from these {} IP(s) will be processed: {}",
-                          allowed_ips_.size(), joined);
+            logger_->info("IP whitelist enabled. Only requests matching these {} entries will be processed: {}",
+                          allowed_ips.size(), joined);
         }
         else
         {
@@ -543,7 +621,21 @@ bool RMQServer::is_peer_allowed_(zmq::message_t &request, std::string &peer_addr
         // matched against the whitelist, so treat it as not allowed.
         return false;
     }
-    return allowed_ips_.find(peer_address) != allowed_ips_.end();
+    unsigned char addr[4];
+    if (inet_pton(AF_INET, peer_address.c_str(), addr) != 1)
+    {
+        // The server socket is IPv4-only, so the peer address should always parse; without a
+        // parseable IPv4 source address the peer cannot be matched, so treat it as not allowed.
+        return false;
+    }
+    for (const AllowedNetwork &net : allowed_networks_)
+    {
+        if (network_contains(net, addr))
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 void RMQServer::background_loop_()
@@ -564,7 +656,22 @@ void RMQServer::background_loop_()
                 std::string peer_address;
                 if (!is_peer_allowed_(request, peer_address))
                 {
-                    logger_->warn("Rejected request from non-whitelisted peer `{}`.", peer_address);
+                    // Warn on the first rejection while a peer is cached; later rejections
+                    // use debug level. Clearing the bounded cache allows a new warning.
+                    if (warned_rejected_ips_.size() >= MAX_WARNED_REJECTED_IPS)
+                    {
+                        warned_rejected_ips_.clear();
+                    }
+                    if (warned_rejected_ips_.insert(peer_address).second)
+                    {
+                        logger_->warn("Rejected request from non-whitelisted peer `{}`. Further rejections from "
+                                      "this peer will be logged at debug level while its address is cached.",
+                                      peer_address);
+                    }
+                    else
+                    {
+                        logger_->debug("Rejected request from non-whitelisted peer `{}`.", peer_address);
+                    }
                     // The REP socket owes exactly one reply per recv (see the malformed-frame handling
                     // below), so answer with an ERROR instead of silently dropping the request.
                     RMQMessage reply("unauthorized", CmdType::ERROR, get_timestamp(),

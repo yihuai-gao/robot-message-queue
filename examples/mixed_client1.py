@@ -5,7 +5,7 @@ This software is released under the MIT License.
 https://opensource.org/licenses/MIT
 """
 
-from robotmq import RMQClient, serialize, deserialize
+from robotmq import RMQClient, safe_serialize, safe_deserialize
 import time
 import numpy as np
 
@@ -31,10 +31,10 @@ def test_mixed_client1():
         obs_data = {
             "obs": np.random.randn(10),
         }
-        obs_data_bytes = serialize(obs_data)
+        obs_data_bytes = safe_serialize(obs_data)
         start_time = time.time()
         action_data = client.request_with_data("policy_inference", obs_data_bytes)
-        action_data = deserialize(action_data)
+        action_data = safe_deserialize(action_data)
         if action_data != "No ckpt provided":
             assert isinstance(action_data, dict)
             print(
@@ -47,7 +47,7 @@ def test_mixed_client1():
                 "ckpt_name": action_data["ckpt_name"],
                 "result": np.random.randn(1),
             }
-            result_data_bytes = serialize(result_data)
+            result_data_bytes = safe_serialize(result_data)
             start_time = time.time()
             client.put_data("result", result_data_bytes)
             print(f"Put result, time spent: {time.time() - start_time}")

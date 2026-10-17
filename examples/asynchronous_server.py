@@ -5,7 +5,7 @@ This software is released under the MIT License.
 https://opensource.org/licenses/MIT
 """
 
-from robotmq import RMQServer, RMQLogLevel, serialize
+from robotmq import RMQServer, RMQLogLevel, safe_serialize
 import time
 import numpy as np
 import pickle
@@ -36,7 +36,7 @@ def test_server():
         # Simulates a data source that keeps getting data from the sensor at a regular interval
         server.put_data("test_raw_np", rand_data.tobytes())
 
-        serialized_data = serialize(
+        serialized_data = safe_serialize(
             {
                 "data": rand_data,
                 "tag": "test_nested_np",
@@ -52,6 +52,7 @@ def test_server():
         )
         server.put_data("test_nested_np", serialized_data)
 
+        # Raw pickle carries arbitrary objects but must only be used between trusted processes
         serialized_data = pickle.dumps(TestClass())
         server.put_data("test_pickle", serialized_data)
 

@@ -3,7 +3,7 @@
 import time
 import numpy as np
 import robotmq
-from robotmq import serialize, deserialize
+from robotmq import safe_serialize, safe_deserialize
 
 
 class TestSharedMemoryTopic:
@@ -34,11 +34,11 @@ class TestSharedMemoryTopic:
         server.add_shared_memory_topic("shm_np", 10.0, 0.1)  # 100 MB
 
         arr = np.random.rand(1000, 1000).astype(np.float64)  # ~8 MB
-        server.put_data("shm_np", serialize(arr))
+        server.put_data("shm_np", safe_serialize(arr))
         time.sleep(0.05)
 
         data, _ = client.peek_data("shm_np", -1)
-        result = deserialize(data[0])
+        result = safe_deserialize(data[0])
         np.testing.assert_array_equal(result, arr)
 
     def test_shm_n_indexing(self, server_client):

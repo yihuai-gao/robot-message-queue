@@ -6,22 +6,22 @@ https://opensource.org/licenses/MIT
 """
 
 import robotmq
-from robotmq import serialize, deserialize
+from robotmq import safe_serialize, safe_deserialize
 import numpy as np
 import time
 
 
 def test_request_with_data():
     client = robotmq.RMQClient("test_client", "tcp://localhost:5555", robotmq.RMQLogLevel.WARNING)
-    # input_data = serialize(np.array([1, 2, 3], dtype=np.float64))
+    # input_data = safe_serialize(np.array([1, 2, 3], dtype=np.float64))
     topics = ["test_shm_topic", "test_topic"]
     for topic in topics:
         input_data = np.random.randn(100000000)
-        data_bytes = serialize(input_data)
+        data_bytes = safe_serialize(input_data)
         start_time = time.time()
         reply = client.request_with_data(topic, data_bytes, timeout_s=10)
         end_time = time.time()
-        reply_data = deserialize(reply)
+        reply_data = safe_deserialize(reply)
 
         print(
             f"Topic: {topic}, request with data (size: {input_data.nbytes / 1024**2:.3f}MB) time spent: {end_time - start_time}, "

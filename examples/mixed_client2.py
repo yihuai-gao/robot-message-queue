@@ -5,7 +5,7 @@ This software is released under the MIT License.
 https://opensource.org/licenses/MIT
 """
 
-from robotmq import RMQClient, serialize, deserialize
+from robotmq import RMQClient, safe_serialize, safe_deserialize
 import time
 import numpy as np
 
@@ -28,7 +28,7 @@ def test_mixed_client2():
                 break
             time.sleep(1)
         ckpt_name = f"ckpt_{np.random.randint(0, 10)}"
-        ckpt_name_bytes = serialize(ckpt_name)
+        ckpt_name_bytes = safe_serialize(ckpt_name)
         start_time = time.time()
         client.put_data("ckpt_name", ckpt_name_bytes)
         print(f"Put ckpt_name: {ckpt_name}, time spent: {time.time() - start_time}")
@@ -37,7 +37,7 @@ def test_mixed_client2():
         result_data_list, _ = client.pop_data("result", 0)
         if result_data_list:
             for result_data in result_data_list:
-                result = deserialize(result_data)
+                result = safe_deserialize(result_data)
                 print(f"Received result: {result}")
 
         time.sleep(1)

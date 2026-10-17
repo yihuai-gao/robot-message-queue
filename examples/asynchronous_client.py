@@ -6,7 +6,7 @@ https://opensource.org/licenses/MIT
 """
 
 import pickle
-from robotmq import RMQClient, RMQLogLevel, deserialize
+from robotmq import RMQClient, RMQLogLevel, safe_deserialize
 import time
 import numpy as np
 
@@ -38,7 +38,7 @@ def test_client():
         # For some applications, once the server is shut down, the client should throw an error and exit as well. In this case, set automatic_resend to False.
         end_popping_time = time.time()
         if raw_data_list:
-            # You can also use pickle to deserialize the arbitrary data
+            # Raw bytes topic: the client rebuilds the array itself with np.frombuffer
             data = np.frombuffer(raw_data_list[0], dtype=np.float64)
             print(
                 f"Received numpy data: shape: {data.shape}, size: {data.nbytes / 1024**2:.3f}MB, receiving time: {end_popping_time - start_time:.3f}s"
@@ -46,11 +46,12 @@ def test_client():
 
         nested_data_list, timestamps = client.pop_data("test_nested_np", 1, automatic_resend=False)
         if nested_data_list:
-            nested_data = deserialize(nested_data_list[0])
+            nested_data = safe_deserialize(nested_data_list[0])
             print(f"Received nested data: {nested_data}")
 
         pickle_data_list, timestamps = client.pop_data("test_pickle", 1, automatic_resend=False)
         if pickle_data_list:
+            # Raw pickle.loads runs code from the stream: only use it between trusted processes
             pickle_data = pickle.loads(pickle_data_list[0])
             assert isinstance(pickle_data, TestClass)
             print(

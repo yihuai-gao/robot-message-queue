@@ -6,7 +6,7 @@ https://opensource.org/licenses/MIT
 """
 
 import robotmq
-from robotmq import serialize, deserialize
+from robotmq import safe_serialize, safe_deserialize
 import numpy as np
 import time
 
@@ -24,11 +24,11 @@ def test_reply_request():
                 continue
 
             start_time = time.time()
-            data = deserialize(request_data)
+            data = safe_deserialize(request_data)
             assert isinstance(data, np.ndarray)
             print(data)
             data += 1.0
-            data_bytes = serialize(data)
+            data_bytes = safe_serialize(data)
             server.reply_request(request_topic, data_bytes)
             print(
                 f"Replied to request, data processing time: {time.time() - start_time:.3f}s"

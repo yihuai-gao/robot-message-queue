@@ -4,7 +4,7 @@ import time
 import numpy as np
 import pytest
 import robotmq
-from robotmq import serialize, deserialize
+from robotmq import safe_serialize, safe_deserialize
 
 
 class TestClientPeekPop:
@@ -220,11 +220,11 @@ class TestNumpyOverNetwork:
         server.add_topic("np", 10.0)
 
         arr = np.random.rand(100, 50).astype(np.float64)
-        server.put_data("np", serialize(arr))
+        server.put_data("np", safe_serialize(arr))
         time.sleep(0.05)
 
         data, _ = client.peek_data("np", 1)
-        result = deserialize(data[0])
+        result = safe_deserialize(data[0])
         np.testing.assert_array_equal(result, arr)
 
     def test_nested_structure_roundtrip(self, server_client):
@@ -236,11 +236,11 @@ class TestNumpyOverNetwork:
             "joints": np.array([0.1, 0.2], dtype=np.float64),
             "meta": {"frame_id": 42},
         }
-        server.put_data("nested", serialize(payload))
+        server.put_data("nested", safe_serialize(payload))
         time.sleep(0.05)
 
         data, _ = client.peek_data("nested", 1)
-        result = deserialize(data[0])
+        result = safe_deserialize(data[0])
         np.testing.assert_array_equal(result["image"], payload["image"])
         np.testing.assert_array_equal(result["joints"], payload["joints"])
         assert result["meta"]["frame_id"] == 42

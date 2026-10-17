@@ -5,7 +5,7 @@ This software is released under the MIT License.
 https://opensource.org/licenses/MIT
 """
 
-from robotmq import RMQServer, serialize, deserialize
+from robotmq import RMQServer, safe_serialize, safe_deserialize
 import time
 import numpy as np
 
@@ -26,7 +26,7 @@ def test_mixed_server():
         try:
             ckpt_name_list, _ = server.pop_data("ckpt_name", -1)
             if ckpt_name_list:
-                ckpt_name = deserialize(ckpt_name_list[0])
+                ckpt_name = safe_deserialize(ckpt_name_list[0])
                 assert isinstance(ckpt_name, str)
                 print(f"Received ckpt_name: {ckpt_name}")
                 # Simulate loading ckpt
@@ -35,7 +35,7 @@ def test_mixed_server():
             request_data, request_topic = server.wait_for_request(1.0)
             print(f"Received request: {request_topic}")
             if request_topic:
-                obs_data = deserialize(request_data)
+                obs_data = safe_deserialize(request_data)
                 if ckpt_name:
                     # Simulate policy inference
                     time.sleep(0.2)
@@ -43,9 +43,9 @@ def test_mixed_server():
                         "action": np.random.randn(10),
                         "ckpt_name": ckpt_name,
                     }
-                    result_data = serialize(action)
+                    result_data = safe_serialize(action)
                 else:
-                    result_data = serialize("No ckpt provided")
+                    result_data = safe_serialize("No ckpt provided")
                 server.reply_request(request_topic, result_data)
 
         except KeyboardInterrupt:

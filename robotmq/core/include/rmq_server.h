@@ -21,14 +21,26 @@
 #include "data_topic.h"
 #include "rmq_message.h"
 #include "spdlog/spdlog.h"
+
+// One parsed allowed_ips entry: a single IPv4 address (prefix_len == 32) or an IPv4 CIDR network.
+// addr is in network byte order.
+struct AllowedNetwork
+{
+    unsigned char addr[4];
+    int prefix_len;
+};
+
 class RMQServer
 {
   public:
     RMQServer(const std::string &server_name, const std::string &server_endpoint); // Default log level is info
     RMQServer(const std::string &server_name, const std::string &server_endpoint, spdlog::level::level_enum log_level);
-    // allowed_ips restricts which client IPs are served. An empty list (the default) accepts every
-    // peer, preserving the previous behavior. The whitelist only applies to tcp:// endpoints (ipc://
-    // peers have no IP address); it is ignored with a warning for non-tcp endpoints.
+    // allowed_ips restricts which client IPs are served. Each entry is an IPv4 address
+    // ("192.168.1.10") or an IPv4 CIDR network ("192.168.1.0/24"); IPv6 entries are rejected with
+    // std::invalid_argument (ValueError in Python) since the server socket is IPv4-only. An empty
+    // list (the default) accepts every peer, preserving the previous behavior. The whitelist only
+    // applies to tcp:// endpoints (ipc:// peers have no IP address and are local-only anyway); it
+    // is ignored with a warning for non-tcp endpoints.
     RMQServer(const std::string &server_name, const std::string &server_endpoint, spdlog::level::level_enum log_level,
               const std::vector<std::string> &allowed_ips);
     ~RMQServer();
@@ -50,8 +62,12 @@ class RMQServer
     bool running_;
     // Set once in the constructor and only read afterwards (including from the background thread),
     // so no lock is needed to consult them.
-    const std::unordered_set<std::string> allowed_ips_;
+    const std::vector<AllowedNetwork> allowed_networks_;
     const bool enforce_ip_whitelist_;
+    // Peer IPs whose rejection has already been logged at warn level (later rejections log at debug
+    // level). Only touched by the background thread, so no lock is needed; cleared when it reaches
+    // a cap to bound memory against spoofed source addresses.
+    std::unordered_set<std::string> warned_rejected_ips_;
     int64_t steady_clock_start_time_us_;
     zmq::context_t context_;
     zmq::socket_t socket_;
@@ -79,8 +95,8 @@ class RMQServer
     bool exists_topic_(const std::string &topic);
     std::function<TimedPtr(const TimedPtr)> request_with_data_handler_;
 
-    // Reads the peer's IP (the ZMQ "Peer-Address" metadata) into peer_address and returns whether it
-    // is allowed. When the whitelist is not enforced this always returns true.
+    // Reads the peer's IP (the ZMQ "Peer-Address" metadata) into peer_address and returns whether
+    // it matches any allowed network. When the whitelist is not enforced this always returns true.
     bool is_peer_allowed_(zmq::message_t &request, std::string &peer_address);
 
     void background_loop_();
