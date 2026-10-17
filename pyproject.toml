@@ -1,6 +1,6 @@
 [build-system]
 requires = [
-    "setuptools>=42",
+    "setuptools>=64",
     "wheel",
     "cmake>=3.10",
     "ninja",          # Optional but recommended for faster builds

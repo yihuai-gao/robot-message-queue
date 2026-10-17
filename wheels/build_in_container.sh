@@ -14,7 +14,7 @@ for abi in cp38-cp38 cp39-cp39 cp310-cp310 cp311-cp311 cp312-cp312 cp313-cp313 c
     cp "$work/wheels/CMakeLists.txt" "$work/CMakeLists.txt"
     "/opt/python/$abi/bin/python" -m venv "/venvs/$abi"
     export PATH="/venvs/$abi/bin:$PATH"
-    python -m pip install --disable-pip-version-check pybind11 setuptools wheel
+    python -m pip install --disable-pip-version-check --upgrade pybind11 'setuptools>=64' wheel
     cd "$work"
     # The project's CMake build writes the extension into the source package.
     # Build it before wheel packaging collects package_data.
