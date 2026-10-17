@@ -12,6 +12,10 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+# Honor the interpreter selected by setup.py instead of letting pybind11's
+# legacy discovery choose the manylinux image's default Python.
+find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
+
 execute_process(
     COMMAND ${Python_EXECUTABLE} -c "import sysconfig; print(sysconfig.get_path('purelib'))"
     OUTPUT_VARIABLE PYTHON_SITE_PACKAGES
