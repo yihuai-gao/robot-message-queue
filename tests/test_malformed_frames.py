@@ -9,6 +9,8 @@ server's REP socket) and then verify the server still serves a normal
 RMQClient request.
 """
 
+from __future__ import annotations
+
 import zmq
 import pytest
 import robotmq

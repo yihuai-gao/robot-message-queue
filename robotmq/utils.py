@@ -6,6 +6,7 @@ import struct
 import sys
 from typing import Any
 import os
+import pwd
 import warnings
 
 from ._pickle_validation import validate_pickle as _validate_pickle
@@ -580,8 +581,12 @@ def safe_deserialize(data: bytes) -> Any:
 def clear_shared_memory():
     try:
         user_name = os.getlogin()
-    except FileNotFoundError as e:
-        user_name = os.getuid()
+    except OSError:
+        # Match the native transport's get_user_name() in headless sessions.
+        try:
+            user_name = pwd.getpwuid(os.getuid()).pw_name
+        except KeyError:
+            user_name = str(os.getuid())
 
     for file in os.listdir("/dev/shm"):
         if file.startswith(f"rmq_{user_name}_"):
