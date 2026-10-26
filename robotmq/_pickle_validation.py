@@ -2,9 +2,22 @@
 
 The stdlib parses and materializes scalar opcode arguments. This pass tracks
 types, memo entries, and tuple hashing costs; it never imports globals or
-reconstructs the payload's container graph. Limits scale with wire size, except
-for fixed bounds on tuple and MARK nesting.
-This is not a process-level memory or CPU sandbox.
+reconstructs the payload's container graph. Limits scale with wire size or
+opcode count, except for fixed bounds on tuple and MARK nesting.
+
+Hash work is counted in units of one tuple element or one big-integer digit
+hashed per dictionary insertion. A memoized tuple key is re-hashed by every
+dictionary that uses it, so many small dictionaries sharing one long tuple
+key legitimately do far more hash work than they have wire bytes. The credit
+is one unit per wire byte (the whole budget of release 0.1.16, so everything
+it accepted still is), plus `_HASH_WORK_PER_OPCODE` units per opcode parsed
+and each integer leaf's own digit count: a bulk bytes / str leaf buys only its
+own byte count of hashing, while every reuse of a key costs opcodes. One unit
+costs about 1.3-4.4 ns (CPython 3.12, measured; float leaves are the slow
+end), so a hostile payload can demand at most about 256 units per opcode plus
+one per wire byte in unpickling (what this pass accounts for) and the same
+again in `safe_deserialize`'s reconstruction: tens of milliseconds per 10 MiB
+of padding, not seconds. This is not a process-level memory or CPU sandbox.
 """
 
 import io
@@ -15,6 +28,7 @@ import sys
 
 _MAX_TUPLE_DEPTH = 128
 _MAX_MARK_DEPTH = 128
+_HASH_WORK_PER_OPCODE = 256
 _INT_BITS = sys.int_info.bits_per_digit
 _LEAF_OPS = frozenset((
     "INT", "BININT", "BININT1", "BININT2", "LONG", "LONG1", "LONG4",
@@ -41,12 +55,15 @@ _EMPTY_OPS = {
 }
 
 
-def validate_pickle(data: bytes) -> None:
+def validate_pickle(data: bytes) -> int:
     """Reject unsafe opcodes, malformed framing, and allocation/hash amplification.
 
-    Raises ValueError for policy failures; stdlib parsing failures propagate to
-    the caller, which wraps them in UnsafePayloadError. The caller must pass the
-    same immutable bytes to the unpickler after validation.
+    Returns the hashing credit the stream earned (one unit per wire byte,
+    `_HASH_WORK_PER_OPCODE` units per opcode and each integer leaf's digit
+    count); the caller hands it to reconstruction as the dict-key hashing budget. Raises ValueError for policy
+    failures; stdlib parsing failures propagate to the caller, which wraps them
+    in UnsafePayloadError. The caller must pass the same immutable bytes to the
+    unpickler after validation.
     """
     size = len(data)
     stream = io.BytesIO(data)
@@ -54,7 +71,15 @@ def validate_pickle(data: bytes) -> None:
     marks = []
     memo = {}
     frame_end = None
+    # Hashing credit starts at one unit per wire byte (release 0.1.16's whole
+    # budget) and grows per opcode (and per integer digit) while parsing:
+    # `credit` is the running total, `hash_left` the unspent part. A tuple built
+    # before its credit is earned is only capped at the most the whole stream
+    # can earn (every opcode is at least one byte; an integer's digits never
+    # exceed its wire bytes).
     hash_left = size
+    credit = size
+    tuple_cap = size * (_HASH_WORK_PER_OPCODE + 2)
 
     def require(count):
         floor = marks[-1] if marks else 0
@@ -69,7 +94,7 @@ def validate_pickle(data: bytes) -> None:
                 raise ValueError("unhashable pickle key or set member")
             hash_left -= cost
             if hash_left < 0:
-                raise ValueError("pickle key hashing exceeds the payload size")
+                raise ValueError("pickle key hashing exceeds the hashing budget")
 
     def tuple_value(values):
         depth = 1
@@ -81,13 +106,15 @@ def validate_pickle(data: bytes) -> None:
             hashable = hashable and value[1] != 0
         if depth > _MAX_TUPLE_DEPTH:
             raise ValueError("pickle tuple nesting exceeds the depth limit")
-        if hashable and cost > size:
-            raise ValueError("pickle tuple hashing exceeds the payload size")
+        if hashable and cost > tuple_cap:
+            raise ValueError("pickle tuple hashing exceeds the hashing budget")
         return ("tuple", cost if hashable else 0, depth, None)
 
     for opcode, arg, pos in pickletools.genops(stream):
         name = opcode.name
         end = stream.tell()
+        hash_left += _HASH_WORK_PER_OPCODE
+        credit += _HASH_WORK_PER_OPCODE
         if frame_end is not None:
             if pos == frame_end:
                 frame_end = None
@@ -100,7 +127,10 @@ def validate_pickle(data: bytes) -> None:
             elif type(arg) is str:
                 value = ("str", 1, 0, arg if len(arg) <= 256 else None)
             elif type(arg) is int:
-                value = ("scalar", max(1, (arg.bit_length() + _INT_BITS - 1) // _INT_BITS), 0, None)
+                digits = max(1, (arg.bit_length() + _INT_BITS - 1) // _INT_BITS)
+                hash_left += digits
+                credit += digits
+                value = ("scalar", digits, 0, None)
             else:
                 value = _SCALAR
             stack.append(value)
@@ -191,7 +221,7 @@ def validate_pickle(data: bytes) -> None:
                 raise ValueError("trailing bytes after STOP")
             if marks or len(stack) != 1:
                 raise ValueError("pickle STOP requires one complete value")
-            return
+            return credit
         elif name == "GLOBAL":
             raise ValueError(f"payload references {arg.replace(' ', '.', 1)}; globals are not allowed")
         elif name == "STACK_GLOBAL":

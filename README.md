@@ -238,14 +238,14 @@ Creates a regular (ZeroMQ-only) topic. Messages older than `message_remaining_ti
 ```python
 server.add_shared_memory_topic(topic: str, message_remaining_time_s: float, shared_memory_size_gb: float) -> None
 ```
-Creates a shared memory topic with a ring buffer of `shared_memory_size_gb` gigabytes. Large data is stored directly in `/dev/shm` for zero-copy local access.
+Creates a shared memory topic with a ring buffer of `shared_memory_size_gb` gigabytes. Large data is stored directly in `/dev/shm` for zero-copy local access. Data larger than the whole segment is refused: `put_data` and `reply_request` raise `ValueError` and store nothing, and a client waiting for that reply receives an error reply (a `RuntimeError`) instead of a timeout. Only clients that share `/dev/shm` with the server can use the topic; `RMQClient.check_shared_memory` tells a client beforehand.
 
 #### Data Operations
 
 ```python
 server.put_data(topic: str, data: bytes) -> None
 ```
-Publishes data to a topic. The data is stored in the topic's queue and timestamped automatically. Expired messages are pruned on each insertion.
+Publishes data to a topic. The data is stored in the topic's queue and timestamped automatically. Expired messages are pruned on each insertion. Raises `ValueError` for empty data, and on a shared memory topic for data larger than the whole segment (nothing is stored).
 
 ```python
 server.peek_data(topic: str, n: int) -> tuple[list[bytes], list[float]]
@@ -274,7 +274,7 @@ Blocks until a client sends a `request_with_data()` call, or until `timeout_s` e
 ```python
 server.reply_request(topic: str, data: bytes) -> None
 ```
-Sends a reply back to the client that issued the request on the given topic. Must be called after `wait_for_request()` returns a valid request.
+Sends a reply back to the client that issued the request on the given topic. Must be called after `wait_for_request()` returns a valid request. Raises `ValueError` like `put_data` when the reply cannot be stored (empty, or larger than a shared memory topic's segment); the client then receives an error reply at once instead of waiting for a timeout.
 
 #### Status & Time
 
@@ -358,6 +358,11 @@ This is the **only** client method that detects server disconnection via a retur
 | `0` | Topic exists, but contains no messages |
 | `> 0` | Number of messages currently in the topic |
 
+```python
+client.check_shared_memory(topic: str, timeout_s: float = 1.0) -> tuple[bool, str]
+```
+Checks in one round trip whether shared memory works between this client and the server for `topic`. Returns `(True, "")` when it does, otherwise `(False, reason)`. It never raises for an unreachable server, a missing or plain topic, or an older server. It fails on another host, in another IPC namespace (a container without `--ipc=host`) and under a user who may not open the segments. The check queues behind an in-flight request on the server, so use a `timeout_s` above the slowest request handler.
+
 #### Other
 
 ```python
@@ -416,7 +421,7 @@ except UnsafePayloadError:   # normal decoding refusals; resource exhaustion may
 - **What travels:** `dict`, `list`, `tuple`, `str`, `bytes`, `int`, `float`, `bool`, `None` (exact builtin types; `OrderedDict` / `defaultdict` / `namedtuple` are flattened to plain containers), numpy arrays of bool / int / uint / float dtype with itemsize ≤ 8 in any memory layout (C, Fortran, strided, big-endian), numpy scalars whose `.item()` is a plain Python value (converted on send: `np.float32` arrives as `float`, so it widens to 64 bits; `np.str_` / `np.bytes_` arrive as `str` / `bytes`), and torch tensors (non-nested, strided layout, every dtype including bfloat16; conjugate / negative views are resolved; rebuilt on the CPU, bit-exact).
 - **What is refused on send** (`TypeError` naming the path of the offending element): `bytearray`, `set` / `frozenset`, subclasses of the builtin leaves (`IntEnum`, `str` subclasses, ...), custom objects (dataclasses, pathlib paths, ...), object / string / void / complex / datetime / longdouble arrays, complex / datetime / timedelta / longdouble scalars, sparse / quantized / nested / meta torch tensors, and any dict containing the reserved key `"__robotmq_torch_tensor__"`.
 - **What is refused on receive** (`UnsafePayloadError`, a subclass of both `pickle.UnpicklingError` and `ValueError`): any payload that references a module or class (including a numpy scalar, a dataclass or a torch tensor pickled by the legacy `serialize()`), reducers, persistent ids, extension codes, external buffers, malformed or truncated streams, all trailing bytes after STOP (including within frames), payloads exceeding the complexity limits below, and forged tensor tags (unknown dtype name, bad shape, byte count mismatch).
-- **Complexity limits:** memo indices must be below the payload byte count; tuple and MARK nesting are capped at 128. Estimated key hashing work, rebuilt container entries plus key work, and rebuilt array/tensor bytes each have a wire-size budget. Extremely shared or deep payloads can be rejected even when produced by a legitimate writer. These checks prevent specific amplification attacks but are not a CPU or memory sandbox: applications still need appropriate input-size and resource limits, and pathological hash collisions or process-wide exhaustion are not covered by the decoding exception contract.
+- **Complexity limits:** memo indices must be below the payload byte count; tuple and MARK nesting are capped at 128. Rebuilt container entries and rebuilt array/tensor bytes each have a wire-size budget; estimated key hashing work (one unit per tuple element or big-integer digit hashed per dictionary insertion, about 1-4 ns each) is allowed one unit per wire byte (all that release 0.1.16 allowed) plus 256 units per pickle opcode plus each big integer's own digit count, so a bulk `bytes` / `str` leaf buys only its own byte count of hashing while many small dictionaries sharing one long memoized tuple key are still accepted (every reuse costs opcodes). Extremely shared or deep payloads can be rejected even when produced by a legitimate writer. These checks prevent specific amplification attacks but are not a CPU or memory sandbox: applications still need appropriate input-size and resource limits, and pathological hash collisions or process-wide exhaustion are not covered by the decoding exception contract.
 - **Performance:** validation adds a full opcode pass on receive. Its cost is most visible for metadata-heavy messages with many small values; large array payloads have relatively few opcodes. Serialization and the wire format are unchanged.
 - **Receive-side leniency:** the reader enforces "no code runs", not the writer's type filter. A legacy client can still deliver `set` / `frozenset` values and arrays of any non-object dtype (complex, datetime, string, structured); object-dtype arrays arrive as the raw `(bytes, dtype_str, shape)` tuple, as with `deserialize()`.
 - **Caveats:** a user tuple of the exact form `(bytes, str, tuple)` is indistinguishable from an array when its dtype and shape are valid (same as `deserialize()`). NumPy arrays retain their dtype's byte order, recorded in `dtype.str`; torch tensor bytes have no byte-order marker, so tensor senders and receivers must share endianness. `torch` is imported when the tag marker and keys match, before its field values are validated; dtype names are checked against torch's dtype table without triggering lazy attribute lookup.

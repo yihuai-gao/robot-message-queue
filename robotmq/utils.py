@@ -109,8 +109,13 @@ def deserialize(data: bytes) -> Any:
 #   Everything else raises TypeError naming the path of the offending element;
 # * before unpickling, the reader validates primitive opcodes, memo indices,
 #   frame boundaries, the exact final STOP, and tuple/key complexity. It then
-#   rebuilds containers, arrays and tensors under entry, key-work and byte
-#   budgets. Normal decoding refusals are reported as `UnsafePayloadError`.
+#   rebuilds containers, arrays and tensors under entry, key-hashing and byte
+#   budgets (entries and bytes: the wire size; key hashing: the credit the
+#   validator earned, one unit per wire byte plus `_HASH_WORK_PER_OPCODE` units
+#   per opcode plus each integer leaf's digits, so a bulk bytes / str leaf buys
+#   only its own byte count of hashing, while a memoized tuple key re-hashed by
+#   many dicts is still accepted because every reuse costs opcodes). Normal
+#   decoding refusals are reported as `UnsafePayloadError`.
 #   These checks bound specific amplification paths, not total process resources.
 #
 # The hot paths build no strings and raise a private `_Reject`; only the error
@@ -130,7 +135,6 @@ _MAX_ARRAY_ITEMSIZE = 8  # refuses longdouble / float128 (platform dependent)
 _MAX_DTYPE_STR = 16  # a real `dtype.str` is at most ~8 characters
 _MAX_TENSOR_DIMS = 64
 _TENSOR_TAG = "__robotmq_torch_tensor__"
-_TENSOR_KEYS = frozenset((_TENSOR_TAG, "dtype", "shape", "data"))
 _ndarray, _generic = np.ndarray, np.generic
 
 
@@ -442,27 +446,47 @@ def _tensor_from_wire(wire: dict, budget: list) -> Any:
     return torch.frombuffer(bytearray(data), dtype=torch.uint8).view(dtype).reshape(shape)
 
 
-def _charge_key(key: Any, budget: list) -> None:
-    """Charge repeated tuple/int hashing when rebuilding memo-shared dicts."""
-    if type(key) is int:
+def _key_hash_cost(key: Any, key_costs: dict) -> int:
+    """Hash work of one dict insertion: one unit per tuple element or big-integer digit.
+
+    A memoized tuple key is the same object in every dict that shares it, so its
+    cost is computed once and cached by id (`key_costs`; the unpickled graph keeps
+    the key alive for the whole `_from_wire` pass, so ids cannot be reused).
+    """
+    t = type(key)
+    if t is int:
         bits = sys.int_info.bits_per_digit
-        budget[0] -= max(1, (key.bit_length() + bits - 1) // bits)
-    else:
-        budget[0] -= 1
-    if budget[0] < 0:
-        raise UnsafePayloadError("safe_deserialize: dictionary key hashing exceeds the payload size")
-    if type(key) is tuple:
+        return max(1, (key.bit_length() + bits - 1) // bits)
+    if t is not tuple:
+        return 1
+    cost = key_costs.get(id(key))
+    if cost is None:
+        cost = 1
         for item in key:
-            _charge_key(item, budget)
+            cost += _key_hash_cost(item, key_costs)
+        key_costs[id(key)] = cost
+    return cost
 
 
-def _from_wire(obj: Any, budget: list) -> Any:
+def _charge_key(key: Any, budget: list, key_costs: dict) -> None:
+    """Charge repeated tuple/int hashing when rebuilding memo-shared dicts."""
+    budget[2] -= _key_hash_cost(key, key_costs)
+    if budget[2] < 0:
+        raise UnsafePayloadError("safe_deserialize: dictionary key hashing exceeds the hashing budget")
+
+
+def _from_wire(obj: Any, budget: list, key_costs: dict) -> Any:
     """Single pass over the unpickled graph: rebuild arrays and tensors under a budget.
 
-    `budget` is `[entries_left, array_bytes_left]`, both starting at the wire
-    size. Charge each dict entry, key's hashing work, and list / tuple slot
-    before rebuilding its container, including slots holding leaves; arrays /
-    tensors also cost their byte length. Preflight separately bounds unpickling.
+    `budget` is `[entries_left, array_bytes_left, hash_work_left]`: the first
+    two start at the wire size, the third at the hashing credit the validator
+    returned (one unit per wire byte plus `_HASH_WORK_PER_OPCODE` units per
+    opcode plus each integer leaf's digits). Charge each dict entry and list /
+    tuple slot before rebuilding
+    its container, including slots holding leaves; each dict key's hashing
+    work (one unit per tuple element or big-integer digit, cached per tuple
+    object in `key_costs`); arrays / tensors also cost their byte length.
+    Preflight separately bounds unpickling.
     """
     t = type(obj)
     if t in _LEAF:
@@ -475,15 +499,17 @@ def _from_wire(obj: Any, budget: list) -> Any:
     if t is dict:
         if _TENSOR_TAG in obj:
             tag = obj[_TENSOR_TAG]
-            if type(tag) is int and tag == 1 and len(obj) == 4 and obj.keys() == _TENSOR_KEYS:
+            # Membership tests hash only the three str constants; comparing
+            # `obj.keys()` to a set would hash every key before `_charge_key`.
+            if type(tag) is int and tag == 1 and len(obj) == 4 and "dtype" in obj and "shape" in obj and "data" in obj:
                 return _tensor_from_wire(obj, budget)
         result = {}
         for key, value in obj.items():
-            _charge_key(key, budget)
-            result[key] = value if type(value) in _LEAF else _from_wire(value, budget)
+            _charge_key(key, budget, key_costs)
+            result[key] = value if type(value) in _LEAF else _from_wire(value, budget, key_costs)
         return result
     if t is list:
-        return [v if type(v) in _LEAF else _from_wire(v, budget) for v in obj]
+        return [v if type(v) in _LEAF else _from_wire(v, budget, key_costs) for v in obj]
     if t is tuple:
         if (
             len(obj) == 3
@@ -503,7 +529,7 @@ def _from_wire(obj: Any, budget: list) -> Any:
                         "safe_deserialize: array bytes exceed the payload size (shared references)"
                     )
                 return array.copy()
-        return tuple([v if type(v) in _LEAF else _from_wire(v, budget) for v in obj])
+        return tuple([v if type(v) in _LEAF else _from_wire(v, budget, key_costs) for v in obj])
     return obj  # set / frozenset / bytearray from a legacy client: returned as-is
 
 
@@ -542,9 +568,16 @@ def safe_deserialize(data: bytes) -> Any:
     Normal decoding refusals raise `UnsafePayloadError` (a
     `pickle.UnpicklingError` and a `ValueError`). Memo indices must be below
     `len(data)`, tuple and MARK nesting are limited to 128, and estimated key
-    hashing work is bounded by the wire size. Reconstruction has separate
-    wire-size budgets for container entries plus key work, and array / tensor
-    bytes. Excessively shared or deep graphs may be refused even if generated
+    hashing work is bounded by a credit of one unit per wire byte (all that
+    release 0.1.16 allowed, so its accepted payloads still pass) plus
+    `_HASH_WORK_PER_OPCODE` (256) units per pickle opcode plus each integer
+    leaf's own digit count, so a bulk bytes / str leaf buys only its own byte
+    count of hashing (a memoized tuple key is re-hashed by every dict that uses
+    it, so many small dicts sharing one long tuple key are legitimate and
+    accepted: every reuse costs opcodes).
+    Reconstruction has separate wire-size budgets for container entries and
+    array / tensor bytes, and the same hashing credit for dict keys.
+    Excessively shared or deep graphs may be refused even if generated
     by a legitimate writer. These limits are not a CPU or memory sandbox:
     large inputs or pathological hash collisions still require application
     limits; process-wide resource exhaustion may raise MemoryError.
@@ -564,14 +597,14 @@ def safe_deserialize(data: bytes) -> Any:
         # different content if another thread mutates the input buffer.
         if type(data) is not bytes:
             data = memoryview(data).tobytes()
-        _validate_pickle(data)
+        credit = _validate_pickle(data)
         stream = io.BytesIO(data)
         obj = _NoGlobals(stream).load()
         if stream.tell() != len(data):
             raise UnsafePayloadError(
                 f"safe_deserialize: {len(data) - stream.tell()} trailing bytes after STOP"
             )
-        return _from_wire(obj, [len(data), len(data)])
+        return _from_wire(obj, [len(data), len(data), credit], {})
     except UnsafePayloadError:
         raise
     except _WRAPPED_ERRORS as exc:

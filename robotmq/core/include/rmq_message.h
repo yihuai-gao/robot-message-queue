@@ -19,6 +19,9 @@ enum class CmdType : int8_t
     SYNCHRONIZE_TIME = 4,
     PUT_DATA = 5,
     GET_TOPIC_STATUS = 6,
+    // The client names a small probe segment it wrote; the server reads it back and answers with its own segment's
+    // name and identity (RMQClient::check_shared_memory). Answered on the background thread, never by Python.
+    CHECK_SHARED_MEMORY = 7,
     ERROR = -1,
     UNKNOWN = 0,
 };

@@ -15,6 +15,7 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
 #include <string>
+#include <tuple>
 #include <vector>
 
 class RMQClient
@@ -35,6 +36,10 @@ class RMQClient
     void put_data(const std::string &topic, const pybind11::bytes &data, double timeout_s, bool automatic_resend);
     pybind11::tuple get_last_retrieved_data();
     pybind11::bytes request_with_data(const std::string &topic, const pybind11::bytes &data, double timeout_s, bool automatic_resend);
+    // Whether shared memory works between this client and the server for `topic`, in both directions, before any
+    // request: (true, "") or (false, the reason). Never raises for an unreachable or older server, and a negative
+    // timeout_s is refused with (false, reason) instead of waiting forever.
+    std::tuple<bool, std::string> check_shared_memory(const std::string &topic, double timeout_s);
 
     double get_timestamp();
     void reset_start_time(int64_t system_time_us);
@@ -45,6 +50,10 @@ class RMQClient
     double default_timeout_s_ = 1.0;
     std::map<std::string, bool> topic_using_shared_memory_;
     std::vector<TimedPtr> deserialize_multiple_data_(const std::string &data);
+    // Sends `message` and returns the server's reply as is (also an ERROR reply); throws a NoReplyError (a
+    // std::runtime_error defined in rmq_client.cpp) on no reply. Whenever a request is given up on, also when the
+    // poll is interrupted by a signal, the REQ socket is replaced so that the next send does not fail with EFSM.
+    RMQMessage exchange_(RMQMessage &message, double timeout_s, bool automatic_resend);
     std::vector<TimedPtr> send_request_(RMQMessage &message, double timeout_s, bool automatic_resend);
     pybind11::tuple ptrs_to_tuple_(const std::vector<TimedPtr> &ptrs);
     std::string client_name_;

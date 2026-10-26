@@ -42,7 +42,8 @@ PYBIND11_MODULE(robotmq_core, m)
         .def("get_last_retrieved_data", &RMQClient::get_last_retrieved_data)
         .def("reset_start_time", &RMQClient::reset_start_time, py::arg("system_time_us"))
         .def("get_timestamp", &RMQClient::get_timestamp)
-        .def("request_with_data", py::overload_cast<const std::string &, const pybind11::bytes &, double, bool>(&RMQClient::request_with_data), py::arg("topic"), py::arg("data"), py::arg("timeout_s")=1.0, py::arg("automatic_resend")=true);
+        .def("request_with_data", py::overload_cast<const std::string &, const pybind11::bytes &, double, bool>(&RMQClient::request_with_data), py::arg("topic"), py::arg("data"), py::arg("timeout_s")=1.0, py::arg("automatic_resend")=true)
+        .def("check_shared_memory", &RMQClient::check_shared_memory, py::arg("topic"), py::arg("timeout_s") = 1.0);
 
     py::class_<RMQServer>(m, "RMQServer")
         .def(py::init<const std::string &, const std::string &, spdlog::level::level_enum,

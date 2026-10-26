@@ -244,6 +244,14 @@ void RMQServer::add_shared_memory_topic(const std::string &topic, double message
                                         double shared_memory_size_gb)
 {
     std::lock_guard<std::mutex> lock(data_topic_mutex_);
+    // Checked before the DataTopic is constructed: constructing it reopens and resizes the live segment and
+    // re-initialises the live mutex, even though the insert below would then discard it.
+    auto it = data_topics_.find(topic);
+    if (it != data_topics_.end())
+    {
+        logger_->warn("Topic `{}` already exists. Ignoring the request to add it again.", topic);
+        return;
+    }
     data_topics_.insert({topic, DataTopic(topic, message_remaining_time_s, server_name_, shared_memory_size_gb)});
     logger_->info("Added shared memory topic `{}` with max remaining time {}s and shared memory size {}GB.", topic,
                   message_remaining_time_s, shared_memory_size_gb);
@@ -266,10 +274,9 @@ void RMQServer::put_data(const std::string &topic, const pybind11::bytes &data)
         return;
     }
 
-    int64_t done_make_shared_time = steady_clock_us();
     if (it->second.is_shm_topic())
     {
-        it->second.copy_data_to_shm(data, get_timestamp());
+        it->second.copy_data_to_shm(data, get_timestamp()); // throws std::invalid_argument when the data does not fit
     }
     else
     {
@@ -286,14 +293,7 @@ pybind11::tuple RMQServer::peek_data(const std::string &topic, int n)
     auto it = data_topics_.find(topic);
     for (const TimedPtr ptr : ptrs)
     {
-        if (it->second.is_shm_topic())
-        {
-            data.append(pybind11::bytes(it->second.get_shared_memory_data(*std::get<0>(ptr))));
-        }
-        else
-        {
-            data.append(pybind11::bytes(*std::get<0>(ptr)));
-        }
+        data.append(it->second.read_entry(std::get<0>(ptr)));
         timestamps.append(std::get<1>(ptr));
     }
     return pybind11::make_tuple(data, timestamps);
@@ -307,14 +307,7 @@ pybind11::tuple RMQServer::pop_data(const std::string &topic, int n)
     auto it = data_topics_.find(topic);
     for (const TimedPtr ptr : ptrs)
     {
-        if (it->second.is_shm_topic())
-        {
-            data.append(pybind11::bytes(it->second.get_shared_memory_data(*std::get<0>(ptr))));
-        }
-        else
-        {
-            data.append(pybind11::bytes(*std::get<0>(ptr)));
-        }
+        data.append(it->second.read_entry(std::get<0>(ptr)));
         timestamps.append(std::get<1>(ptr));
     }
     return pybind11::make_tuple(data, timestamps);
@@ -339,22 +332,43 @@ pybind11::tuple RMQServer::wait_for_request(double timeout_s)
                 std::vector<TimedPtr> ptrs = pop_data_ptrs_(topic, 0); // Pop all data
                 if (ptrs.size() == 0)
                 {
-                    logger_->error("Failed to pop data from topic {}. Please check if the topic is added.", topic);
-                    return pybind11::make_tuple(pybind11::bytes(), pybind11::str(topic));
+                    // Nothing to hand to Python (the request expired from the topic): answer the client with an
+                    // error through the background thread, which otherwise waits for a reply forever.
+                    std::string error_message = "Server `" + server_name_ + "` lost the request on topic `" + topic +
+                                                "` before handling it (it expired from the topic queue).";
+                    logger_->error(error_message);
+                    std::lock_guard<std::mutex> reply_lock(reply_mutex_);
+                    request_error_ = error_message;
+                    continue;
                 }
                 else if (ptrs.size() > 1)
                 {
                     logger_->error("Received more than one data from topic {}. Will only return the latest data.",
                                    topic);
                 }
-                // Clear the queue and return the latest data
-                Bytes data = *std::get<0>(ptrs[0]);
+                // Clear the queue and return the latest data (the request's own block is pushed last)
+                Bytes data = *std::get<0>(ptrs.back());
                 pybind11::bytes data_bytes;
 
                 if (SharedMemoryDataInfo::is_shm_data_info(data))
                 {
-                    SharedMemoryDataInfo data_info(data);
-                    data_bytes = data_info.get_shm_data();
+                    try
+                    {
+                        SharedMemoryDataInfo data_info(data);
+                        data_bytes = data_info.get_shm_data();
+                    }
+                    catch (const std::exception &e)
+                    {
+                        // The background thread checked the segment before parking the request, so it vanished
+                        // since. Never raise into Python with the request parked: the background thread answers
+                        // the client with this error and the server keeps serving.
+                        std::string error_message = "Server `" + server_name_ + "` failed to read the request on topic `" +
+                                                    topic + "`: " + e.what();
+                        logger_->error(error_message);
+                        std::lock_guard<std::mutex> reply_lock(reply_mutex_);
+                        request_error_ = error_message;
+                        continue;
+                    }
                 }
                 else
                 {
@@ -372,7 +386,24 @@ pybind11::tuple RMQServer::wait_for_request(double timeout_s)
 
 void RMQServer::reply_request(const std::string &topic, const pybind11::bytes &data)
 {
-    put_data(topic, data);
+    try
+    {
+        put_data(topic, data);
+    }
+    catch (const std::invalid_argument &e)
+    {
+        // The reply cannot be stored (empty, or larger than the topic's shared memory segment). The background
+        // thread answers the parked request with this error, so the client fails at once instead of timing out,
+        // and the error is raised into Python as well.
+        std::string error_message =
+            "Server `" + server_name_ + "` could not store its reply on topic `" + topic + "`: " + e.what();
+        logger_->error(error_message);
+        {
+            std::lock_guard<std::mutex> lock(reply_mutex_);
+            request_error_ = error_message;
+        }
+        throw;
+    }
     {
         std::lock_guard<std::mutex> lock(reply_mutex_);
         reply_topic_ = topic;
@@ -469,10 +500,8 @@ void RMQServer::process_request_(RMQMessage &message)
     {
         std::string error_message =
             "Topic `" + message.topic() + "` not found. Please first call add_topic to add it into the server topics.";
-        RMQMessage reply(message.topic(), CmdType::ERROR, get_timestamp(), error_message);
-        std::string reply_data = reply.serialize();
         logger_->error(error_message);
-        socket_.send(zmq::message_t(reply_data.data(), reply_data.size()), zmq::send_flags::none);
+        reply_error_(message.topic(), error_message);
         return;
     }
     switch (message.cmd())
@@ -489,9 +518,7 @@ void RMQServer::process_request_(RMQMessage &message)
         if (!error_message.empty())
         {
             logger_->error(error_message);
-            RMQMessage reply(message.topic(), CmdType::ERROR, get_timestamp(), error_message);
-            std::string reply_data = reply.serialize();
-            socket_.send(zmq::message_t(reply_data.data(), reply_data.size()), zmq::send_flags::none);
+            reply_error_(message.topic(), error_message);
             break;
         }
         int32_t n = bytes_to_int32(message.data_str());
@@ -524,8 +551,43 @@ void RMQServer::process_request_(RMQMessage &message)
             cached_reply_data_.erase(message.topic());
         }
 
+        // A request that names a client's shared memory segment is checked here, before Python sees it: a segment
+        // this server cannot open (another host, another IPC namespace, another user) is answered with an error at
+        // once instead of failing inside wait_for_request while this thread waits for a reply forever.
+        std::vector<TimedPtr> request_ptrs = message.data_ptrs();
+        std::string unreadable_error;
+        for (const TimedPtr &ptr : request_ptrs)
+        {
+            const Bytes &block = *std::get<0>(ptr);
+            if (!SharedMemoryDataInfo::is_shm_data_info(block))
+            {
+                continue;
+            }
+            SharedMemoryDataInfo data_info(block);
+            std::string reason;
+            if (!data_info.check_readable(reason))
+            {
+                unreadable_error = "Server `" + server_name_ + "` cannot read the request's shared memory segment /dev/shm/" +
+                                   data_info.shm_name() + " (" + reason +
+                                   "). Shared memory needs the client and the server on one /dev/shm (the same host "
+                                   "and IPC namespace) with permission to open each other's segments; "
+                                   "RMQClient.check_shared_memory tells this before a request.";
+                break;
+            }
+        }
+        if (!unreadable_error.empty())
+        {
+            logger_->error(unreadable_error);
+            reply_error_(message.topic(), unreadable_error);
+            break;
+        }
+
         last_request_timestamp_[message.topic()] = message.timestamp();
-        add_data_ptrs_(message.topic(), message.data_ptrs());
+        add_data_ptrs_(message.topic(), request_ptrs);
+        {
+            std::lock_guard<std::mutex> lock(reply_mutex_);
+            request_error_ = "";
+        }
         {
             std::lock_guard<std::mutex> lock(get_new_request_mutex_);
             get_new_request_ = message.topic();
@@ -535,6 +597,12 @@ void RMQServer::process_request_(RMQMessage &message)
             std::this_thread::sleep_for(std::chrono::microseconds(100));
             {
                 std::lock_guard<std::mutex> lock(reply_mutex_);
+                if (!request_error_.empty()) // The request could not be handed to Python
+                {
+                    reply_error_(message.topic(), request_error_);
+                    request_error_ = "";
+                    break;
+                }
                 if (reply_topic_ != "") // Wait until the request is processed by the main thread
                 {
                     assert(reply_topic_ == message.topic());
@@ -559,12 +627,9 @@ void RMQServer::process_request_(RMQMessage &message)
             logger_->error("Received data for unknown topic {}. Please first call add_topic to add it into the "
                            "recorded topics.",
                            message.topic());
-            RMQMessage reply(message.topic(), CmdType::ERROR, get_timestamp(),
-                             "Topic `" + message.topic() +
-                                 "` not found. Please first call add_topic to add it into the "
-                                 "recorded topics.");
-            std::string reply_data = reply.serialize();
-            socket_.send(zmq::message_t(reply_data.data(), reply_data.size()), zmq::send_flags::none);
+            reply_error_(message.topic(), "Topic `" + message.topic() +
+                                              "` not found. Please first call add_topic to add it into the "
+                                              "recorded topics.");
             break;
         }
         add_data_ptrs_(message.topic(), message.data_ptrs());
@@ -592,15 +657,85 @@ void RMQServer::process_request_(RMQMessage &message)
         break;
     }
 
+    case CmdType::CHECK_SHARED_MEMORY: {
+        check_shared_memory_(message);
+        break;
+    }
+
     default: {
         std::string error_message = "Received unknown command: " + std::to_string(static_cast<int>(message.cmd()));
         logger_->error(error_message);
-        RMQMessage reply(message.topic(), CmdType::ERROR, get_timestamp(), error_message);
-        std::string reply_data = reply.serialize();
-        socket_.send(zmq::message_t(reply_data.data(), reply_data.size()), zmq::send_flags::none);
+        reply_error_(message.topic(), error_message);
         break;
     }
     }
+}
+
+void RMQServer::reply_error_(const std::string &topic, const std::string &error_message)
+{
+    RMQMessage reply(topic, CmdType::ERROR, get_timestamp(), error_message);
+    std::string reply_data = reply.serialize();
+    socket_.send(zmq::message_t(reply_data.data(), reply_data.size()), zmq::send_flags::none);
+}
+
+void RMQServer::check_shared_memory_(RMQMessage &message)
+{
+    // Reply payload: int32 status (0 the server read the probe, 1 not a shared memory topic, 2 the server cannot
+    // read the probe), uint64 st_dev, uint64 st_ino and uint64 size of the topic's segment, then three
+    // length-prefixed strings: the probe bytes as read, the segment name, the reason for status 2.
+    const std::string probe_suffix(SHM_PROBE_SUFFIX);
+    int32_t status = 0;
+    uint64_t device = 0, inode = 0, size = 0;
+    std::string probe_bytes, segment_name, error;
+    {
+        std::lock_guard<std::mutex> lock(data_topic_mutex_);
+        auto it = data_topics_.find(message.topic()); // process_request_ answered an unknown topic already
+        if (it == data_topics_.end() || !it->second.is_shm_topic())
+        {
+            status = 1;
+        }
+        else
+        {
+            segment_name = it->second.shm_name();
+            device = it->second.shm_device();
+            inode = it->second.shm_inode();
+            size = it->second.shm_size_bytes();
+        }
+    }
+    if (status == 0)
+    {
+        std::string descriptor = message.data_str();
+        if (!SharedMemoryDataInfo::is_shm_data_info(descriptor))
+        {
+            status = 2;
+            error = "the request names no shared memory segment";
+        }
+        else
+        {
+            SharedMemoryDataInfo probe(descriptor);
+            const std::string probe_name = probe.shm_name();
+            // Only a small probe segment is read back: the reply must never echo another segment's contents.
+            if (probe.shm_size_bytes() > SHM_MAX_PROBE_BYTES || probe_name.size() < probe_suffix.size() ||
+                probe_name.compare(probe_name.size() - probe_suffix.size(), probe_suffix.size(), probe_suffix) != 0)
+            {
+                status = 2;
+                error = "/dev/shm/" + probe_name + " is not a probe segment (a name ending in `" + probe_suffix +
+                        "`, at most " + std::to_string(SHM_MAX_PROBE_BYTES) + " bytes)";
+            }
+            else if (!probe.read_bytes(probe_bytes, error))
+            {
+                status = 2;
+                error = "/dev/shm/" + probe_name + ": " + error;
+            }
+        }
+    }
+    std::string payload = int32_to_bytes(status) + uint64_to_bytes(device) + uint64_to_bytes(inode) + uint64_to_bytes(size);
+    append_length_prefixed(payload, probe_bytes);
+    append_length_prefixed(payload, segment_name);
+    append_length_prefixed(payload, error);
+    RMQMessage reply(message.topic(), CmdType::CHECK_SHARED_MEMORY, get_timestamp(), payload);
+    std::string reply_data = reply.serialize();
+    socket_.send(zmq::message_t(reply_data.data(), reply_data.size()), zmq::send_flags::none);
 }
 
 bool RMQServer::is_peer_allowed_(zmq::message_t &request, std::string &peer_address)

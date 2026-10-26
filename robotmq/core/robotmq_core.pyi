@@ -44,8 +44,24 @@ class RMQServer:
     def add_topic(self, topic: str, message_remaining_time_s: float) -> None: ...
     def add_shared_memory_topic(
         self, topic: str, message_remaining_time_s: float, shared_memory_size_gb: float
-    ) -> None: ...
-    def put_data(self, topic: str, data: bytes) -> None: ...
+    ) -> None:
+        """Add a topic whose data and replies travel through a ``/dev/shm`` segment of ``shared_memory_size_gb``.
+
+        Only clients that share ``/dev/shm`` with the server (the same host and IPC namespace, with permission to
+        open the segments) can use it; ``RMQClient.check_shared_memory`` tells a client so before its first request.
+        A request whose segment the server cannot read is answered with an error at once, and the server keeps
+        serving. Data larger than the whole segment is refused: ``put_data`` and ``reply_request`` raise
+        ``ValueError`` and store nothing, and a client waiting for that reply gets an error reply (``RuntimeError``)
+        at once.
+        """
+        ...
+    def put_data(self, topic: str, data: bytes) -> None:
+        """Store ``data`` in ``topic``, timestamped now.
+
+        Raises ``ValueError`` for empty data, and on a shared memory topic for data larger than the whole segment
+        (nothing is stored).
+        """
+        ...
     def peek_data(self, topic: str, n: int) -> tuple[list[bytes], list[float]]:
         """Peek at data from a specified topic without removing it.
 
@@ -80,7 +96,13 @@ class RMQServer:
     def get_timestamp(self) -> float: ...
     def reset_start_time(self, system_time_us: int) -> None: ...
     def wait_for_request(self, timeout_s: float) -> tuple[bytes, str]: ...
-    def reply_request(self, topic: str, data: bytes) -> None: ...
+    def reply_request(self, topic: str, data: bytes) -> None:
+        """Answer the request that ``wait_for_request`` returned for ``topic`` with ``data``.
+
+        Raises ``ValueError`` like ``put_data`` when the reply cannot be stored (empty, or larger than a shared
+        memory topic's segment); the client then receives an error reply at once instead of waiting for a timeout.
+        """
+        ...
 
 class RMQClient:
     def __init__(self, client_name: str, server_endpoint: str, log_level: RMQLogLevel=RMQLogLevel.INFO) -> None: ...
@@ -145,3 +167,22 @@ class RMQClient:
     def get_timestamp(self) -> float: ...
     def reset_start_time(self, system_time_us: int) -> None: ...
     def request_with_data(self, topic: str, data: bytes, timeout_s: float = 1.0, automatic_resend: bool = True) -> bytes: ...
+    def check_shared_memory(self, topic: str, timeout_s: float = 1.0) -> tuple[bool, str]:
+        """Whether shared memory works between this client and the server for ``topic``, before any request.
+
+        One round trip, answered by the server's background thread (no handler code of the server runs for it): the
+        client writes a random probe segment that the server must read back, then opens the topic's data segment
+        (read-only) and checks it is the server's file, and opens and maps its mutex (read-write). It fails on
+        another host, in another IPC namespace (a container without ``--ipc=host``) and under a user who may not
+        open the segments. The background thread serves one request at a time and, inside an in-flight
+        ``request_with_data``, blocks until the server's Python calls ``reply_request``, so this check waits behind
+        the slowest handler: use a ``timeout_s`` above the slowest request handler's duration.
+
+        Returns:
+            ``(True, "")`` when it works, else ``(False, reason)``. It never raises for an unreachable server, a
+            missing or plain topic, or a server whose robotmq predates this call (the reason names each case). A
+            reason starting ``"the exchange with the server failed"`` means a malformed reply or a socket error. A
+            negative ``timeout_s`` is refused with ``(False, "timeout_s must be non-negative, ...")`` instead of
+            waiting forever.
+        """
+        ...

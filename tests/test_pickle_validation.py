@@ -8,6 +8,7 @@ import copyreg
 import pickle
 import struct
 
+import numpy as np
 import pytest
 
 import robotmq.utils as utils
@@ -105,19 +106,71 @@ def test_tuple_hash_amplification_is_rejected(prefix, suffix, forbid_native_load
 
 
 def test_repeated_big_integer_hashing_is_bounded(forbid_native_loader):
-    integer = pickle.LONG4 + struct.pack("<I", 4096) + b"\x01" * 4096
+    # A 64 KiB integer (~17.5 K digits) is re-hashed by each of 2048 dicts. The
+    # hashing credit is one unit per wire byte (~78 K) plus 256 per opcode plus
+    # the integer's own digits, so the integer and a handful of dicts are paid
+    # for, and the 2048 re-hashes (~36 M units against ~3.3 M credit) exceed it.
+    integer = pickle.LONG4 + struct.pack("<I", 65536) + b"\x01" * 65536
     # Keep the integer in the memo; each new dict forces another hash.
     body = integer + pickle.BINPUT + b"\x00" + pickle.POP + pickle.EMPTY_LIST
-    body += (pickle.EMPTY_DICT + pickle.BINGET + b"\x00" + pickle.NONE + pickle.SETITEM + pickle.APPEND) * 32
+    body += (pickle.EMPTY_DICT + pickle.BINGET + b"\x00" + pickle.NONE + pickle.SETITEM + pickle.APPEND) * 2048
     with pytest.raises(UnsafePayloadError, match="key hashing"):
         safe_deserialize(_p4(body))
 
 
 def test_reconstruction_of_shared_dicts_budgets_key_hashing():
-    key = tuple(range(256))
-    wire = pickle.dumps([{key: None}] * 256)
+    # One memoized dict with 64 tuple keys of 1024 ints each, referenced 4096 times:
+    # ~270 M hash units on reconstruction against a credit of one unit per byte
+    # (~200 KB) plus 256 per opcode (~70 K opcodes): ~18 M units.
+    keys = [tuple(range(i, i + 1024)) for i in range(64)]
+    shared = dict.fromkeys(keys)
+    wire = pickle.dumps([shared] * 4096)
     with pytest.raises(UnsafePayloadError, match="key hashing"):
         safe_deserialize(wire)
+
+
+def test_bulk_padding_credits_only_its_own_bytes(forbid_native_loader):
+    # A bulk leaf credits one hash unit per byte, not 256: a 64 KiB bytes leaf
+    # (one opcode, ~66 K units) does not pay for a DAG tuple key of ~12.6 M units.
+    pad = pickle.BINBYTES8 + struct.pack("<Q", 65536) + b"\x00" * 65536 + pickle.POP
+    key = pickle.NONE + pickle.TUPLE1 + (pickle.DUP + pickle.TUPLE2) * 22
+    with pytest.raises(UnsafePayloadError, match="hashing budget"):
+        safe_deserialize(_p4(pad + pickle.EMPTY_DICT + key + pickle.NONE + pickle.SETITEM))
+
+
+def test_big_integer_key_is_accepted():
+    # A dict keyed by one 64 KiB integer: the integer leaf credits its own digits,
+    # so the single hash its insertion needs fits the budget.
+    payload = {1 << 524287: 1}
+    assert safe_deserialize(safe_serialize(payload)) == payload
+    assert safe_deserialize(pickle.dumps(payload)) == payload
+
+
+@pytest.mark.parametrize("payload", [
+    # Two dicts sharing a memoized tuple key around a 64 KiB integer (~35 K units of
+    # hashing on 65 KB of wire): accepted by release 0.1.16, whose budget was the
+    # wire size, so it must stay accepted.
+    [{(1 << 524287,): 0}, {(1 << 524287,): 1}],
+    # 1000 dicts sharing a 5000-element tuple key (~5 M units) next to a 10 MB array:
+    # the array's bytes pay for the hashing, exactly as they did in 0.1.16.
+    {"image": np.zeros(10_000_000, dtype=np.uint8), "meta": [{tuple(range(5000)): i} for i in range(1000)]},
+])
+def test_payloads_accepted_by_release_0_1_16_stay_accepted(payload):
+    rebuilt = safe_deserialize(safe_serialize(payload))
+    if isinstance(payload, dict):
+        assert np.array_equal(rebuilt["image"], payload["image"]) and rebuilt["meta"] == payload["meta"]
+    else:
+        assert rebuilt == payload
+
+
+@pytest.mark.parametrize("key_len", [8, 20, 64, 256])
+def test_many_dicts_sharing_a_long_tuple_key_are_accepted(key_len):
+    # The hash budget must not reject this legitimate shape: pickle memoizes the
+    # tuple key once, and every one of the 1000 dicts re-hashes it on insertion.
+    key = tuple(range(key_len))
+    payload = [{key: i} for i in range(1000)]
+    for wire in (safe_serialize(payload), pickle.dumps(payload)):
+        assert safe_deserialize(wire) == payload
 
 
 def test_shared_tuple_keys_remain_compatible():
@@ -146,8 +199,9 @@ def test_mutable_input_is_frozen_before_validation(make, monkeypatch):
 
     def mutate_after_validation(data):
         assert type(data) is bytes
-        validate(data)
+        credit = validate(data)
         source[:] = b"x" * len(source)
+        return credit
 
     monkeypatch.setattr(utils, "_validate_pickle", mutate_after_validation)
     assert safe_deserialize(make(source)) == {"v": 1}

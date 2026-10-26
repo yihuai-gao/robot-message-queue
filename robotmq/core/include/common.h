@@ -31,8 +31,21 @@ std::string double_to_bytes(double value);
 double bytes_to_double(const std::string &bytes);
 std::string bytes_to_hex(const std::string &bytes);
 
+std::string uint64_to_bytes(uint64_t value);
+uint64_t bytes_to_uint64(const std::string &bytes);
+
+// Length-prefixed (uint32) byte strings, for replies that carry several fields.
+void append_length_prefixed(std::string &out, const std::string &field);
+// Reads the field at `pos` and advances `pos`; throws std::invalid_argument when `in` is too short.
+std::string read_length_prefixed(const std::string &in, size_t &pos);
+
 std::string get_user_name();
 std::string get_pid();
+
+// The probe segment of RMQClient::check_shared_memory: its name ends in SHM_PROBE_SUFFIX and the server reads back at
+// most SHM_MAX_PROBE_BYTES of it, so the reply can never echo another segment's contents.
+constexpr const char *SHM_PROBE_SUFFIX = "_probe";
+constexpr uint64_t SHM_MAX_PROBE_BYTES = 64;
 
 class SharedMemoryDataInfo
 {
@@ -51,10 +64,24 @@ class SharedMemoryDataInfo
 
     std::string serialize() const;
 
+    // The described bytes as a Python bytes object; throws std::runtime_error when the segment cannot be opened or
+    // read. get_shm_data_with_mutex also holds the segment's process-shared mutex for the read.
     pybind11::bytes get_shm_data() const;
     pybind11::bytes get_shm_data_with_mutex() const;
 
+    // Whether this process can open the segment read-only and it holds the bytes the descriptor names. Uses no
+    // Python objects, so it is safe on the server's background thread (no GIL). The reason goes to `error`.
+    bool check_readable(std::string &error) const;
+    // Copies the described bytes into `out`; same contract as check_readable.
+    bool read_bytes(std::string &out, std::string &error) const;
+
   private:
+    // The descriptor's own consistency: a non-empty segment, a start inside it or equal to its size (an entry that
+    // begins at the wrap point, whose bytes all lie at the front of the ring), data no larger than it.
+    bool in_bounds_(std::string &error) const;
+    // Reads the described bytes (following the ring-buffer wrap) from the open segment `fd` into `dst`, which holds
+    // at least data_size_bytes_ bytes. Returns false with the reason in `error`.
+    bool read_into_(int fd, char *dst, std::string &error) const;
     static const std::string HEADER;
     std::string shm_name_;
     uint64_t shm_size_bytes_;

@@ -78,6 +78,9 @@ class RMQServer
     std::string get_new_request_ = "";
     std::mutex get_new_request_mutex_;
     std::string reply_topic_ = "";
+    // Set (under reply_mutex_) when the parked request cannot be handed to Python; the background thread then
+    // answers the client with this error instead of waiting for a reply that never comes.
+    std::string request_error_ = "";
     std::mutex reply_mutex_;
 
     // Cache for deduplicating REQUEST_WITH_DATA retries
@@ -88,6 +91,8 @@ class RMQServer
     std::shared_ptr<spdlog::logger> logger_;
 
     void process_request_(RMQMessage &message);
+    void reply_error_(const std::string &topic, const std::string &error_message);
+    void check_shared_memory_(RMQMessage &message);
 
     std::vector<TimedPtr> peek_data_ptrs_(const std::string &topic, int32_t n);
     std::vector<TimedPtr> pop_data_ptrs_(const std::string &topic, int32_t n);

@@ -6,6 +6,7 @@
  */
 
 #include "common.h"
+#include <algorithm>
 #include <cstring>
 #include <fcntl.h>
 #include <pybind11/functional.h>
@@ -183,6 +184,12 @@ SharedMemoryDataInfo::SharedMemoryDataInfo(const std::string &serialized_data_in
 
     shm_name_ = serialized_data_info.substr(current_byte_idx, shm_name_size);
     current_byte_idx += shm_name_size;
+    // shm_open stops at a NUL, so a name with one embedded would pass any check on the std::string (such as the
+    // server's probe suffix check) yet open a different segment; glibc rejects a '/' inside a name anyway.
+    if (shm_name_.empty() || shm_name_.find('\0') != std::string::npos || shm_name_.find('/') != std::string::npos)
+    {
+        throw std::invalid_argument("Invalid shared memory name in data info (contains NUL or '/')");
+    }
 
     shm_size_bytes_ = bytes_to_uint64(serialized_data_info.substr(current_byte_idx, sizeof(uint64_t)));
     current_byte_idx += sizeof(uint64_t);
@@ -263,36 +270,148 @@ pybind11::bytes concat_to_pybytes(const char *a, size_t a_len, const char *b, si
     return pybind11::reinterpret_steal<pybind11::bytes>(py_bytes);
 }
 
+namespace
+{
+// Opens `shm_name` with `flags` and rejects a segment that is already smaller than the `min_size` bytes described.
+// A segment shrunk after this check still faults on a mapped read (SIGBUS), which is why every read of a segment
+// another process owns (read_bytes and get_shm_data) goes through SharedMemoryDataInfo::read_into_ and pread.
+// Returns the fd, or -1 with the reason in `error`.
+int open_shm_at_least(const std::string &shm_name, int flags, uint64_t min_size, std::string &error)
+{
+    int fd = shm_open(shm_name.c_str(), flags, 0);
+    if (fd == -1)
+    {
+        error = strerror(errno);
+        return -1;
+    }
+    struct stat shm_stat;
+    if (fstat(fd, &shm_stat) == -1)
+    {
+        error = strerror(errno);
+        close(fd);
+        return -1;
+    }
+    if (static_cast<uint64_t>(shm_stat.st_size) < min_size)
+    {
+        error = "the segment holds " + std::to_string(shm_stat.st_size) + " bytes, fewer than the " +
+                std::to_string(min_size) + " bytes described";
+        close(fd);
+        return -1;
+    }
+    return fd;
+}
+
+// Reads exactly `count` bytes at `offset` of `fd` into `buf`. Returns false with the reason in `error` on a failed
+// read or a short one (the segment shrank below the size checked when it was opened).
+bool pread_exactly(int fd, char *buf, uint64_t count, uint64_t offset, std::string &error)
+{
+    uint64_t done = 0;
+    while (done < count)
+    {
+        ssize_t n = pread(fd, buf + done, count - done, static_cast<off_t>(offset + done));
+        if (n == -1)
+        {
+            if (errno == EINTR)
+            {
+                continue;
+            }
+            error = strerror(errno);
+            return false;
+        }
+        if (n == 0)
+        {
+            error = "the segment shrank while it was read";
+            return false;
+        }
+        done += static_cast<uint64_t>(n);
+    }
+    return true;
+}
+} // namespace
+
+bool SharedMemoryDataInfo::in_bounds_(std::string &error) const
+{
+    if (shm_size_bytes_ == 0 || shm_start_idx_ > shm_size_bytes_ || data_size_bytes_ > shm_size_bytes_)
+    {
+        error = "descriptor out of bounds (segment " + std::to_string(shm_size_bytes_) + " bytes, start " +
+                std::to_string(shm_start_idx_) + ", data " + std::to_string(data_size_bytes_) + " bytes)";
+        return false;
+    }
+    return true;
+}
+
+// pread rather than mmap: another process owns the segment and may shrink it after the size check, which faults a
+// mapped read (SIGBUS) but only shortens a pread.
+bool SharedMemoryDataInfo::read_into_(int fd, char *dst, std::string &error) const
+{
+    uint64_t first_part = std::min(data_size_bytes_, shm_size_bytes_ - shm_start_idx_);
+    return pread_exactly(fd, dst, first_part, shm_start_idx_, error) &&
+           pread_exactly(fd, dst + first_part, data_size_bytes_ - first_part, 0, error); // the ring-buffer wrap
+}
+
+bool SharedMemoryDataInfo::check_readable(std::string &error) const
+{
+    if (!in_bounds_(error))
+    {
+        return false;
+    }
+    int fd = open_shm_at_least(shm_name_, O_RDONLY, shm_size_bytes_, error);
+    if (fd == -1)
+    {
+        return false;
+    }
+    close(fd);
+    return true;
+}
+
+bool SharedMemoryDataInfo::read_bytes(std::string &out, std::string &error) const
+{
+    if (!in_bounds_(error))
+    {
+        return false;
+    }
+    int fd = open_shm_at_least(shm_name_, O_RDONLY, shm_size_bytes_, error);
+    if (fd == -1)
+    {
+        return false;
+    }
+    out.resize(data_size_bytes_);
+    bool complete = read_into_(fd, out.data(), error);
+    close(fd);
+    if (!complete)
+    {
+        out.clear();
+    }
+    return complete;
+}
+
 pybind11::bytes SharedMemoryDataInfo::get_shm_data() const
 {
-
-    int shm_fd = shm_open(shm_name_.c_str(), O_RDONLY, 0666);
+    std::string error;
+    if (!in_bounds_(error))
+    {
+        throw std::runtime_error("Failed to open shared memory: " + shm_name_ + " " + error);
+    }
+    int shm_fd = open_shm_at_least(shm_name_, O_RDONLY, shm_size_bytes_, error);
     if (shm_fd == -1)
     {
-        throw std::runtime_error("Failed to open shared memory: " + shm_name_ + " " + std::string(strerror(errno)));
+        throw std::runtime_error("Failed to open shared memory: " + shm_name_ + " " + error);
     }
 
-    void *shm_ptr = mmap(0, shm_size_bytes_, PROT_READ, MAP_SHARED, shm_fd, 0);
-    if (shm_ptr == MAP_FAILED)
+    // Allocate the bytes object first and read straight into its buffer, so the data is copied exactly once.
+    PyObject *raw = PyBytes_FromStringAndSize(nullptr, static_cast<Py_ssize_t>(data_size_bytes_));
+    if (!raw)
     {
-        throw std::runtime_error("Failed to map shared memory: " + shm_name_ + " " + std::string(strerror(errno)));
+        close(shm_fd);
+        throw std::runtime_error("Failed to allocate Python bytes");
     }
-    pybind11::bytes data;
-    if (shm_start_idx_ + data_size_bytes_ < shm_size_bytes_)
-    {
-        data = pybind11::bytes(static_cast<char *>(shm_ptr) + shm_start_idx_, data_size_bytes_);
-    }
-    else
-    {
-        char *a = static_cast<char *>(shm_ptr) + shm_start_idx_;
-        size_t a_len = shm_size_bytes_ - shm_start_idx_;
-        char *b = static_cast<char *>(shm_ptr);
-        size_t b_len = data_size_bytes_ - a_len;
-        data = concat_to_pybytes(a, a_len, b, b_len);
-    }
-    munmap(shm_ptr, shm_size_bytes_);
+    pybind11::bytes data = pybind11::reinterpret_steal<pybind11::bytes>(raw); // released on any exception below
+    bool complete = read_into_(shm_fd, PyBytes_AS_STRING(raw), error);
     close(shm_fd);
-
+    if (!complete)
+    {
+        throw std::runtime_error("Failed to read shared memory: " + shm_name_ + " " + error);
+    }
     return data;
 }
 
@@ -308,10 +427,27 @@ pybind11::bytes SharedMemoryDataInfo::get_shm_data_with_mutex() const
     }
     pthread_mutex_t *shm_mutex_ptr =
         (pthread_mutex_t *)mmap(0, sizeof(pthread_mutex_t), PROT_READ | PROT_WRITE, MAP_SHARED, shm_mutex_fd, 0);
+    if (shm_mutex_ptr == MAP_FAILED)
+    {
+        std::string reason = strerror(errno);
+        close(shm_mutex_fd);
+        throw std::runtime_error("Failed to map shared memory mutex: " + shm_name_ + "_mutex " + reason);
+    }
     pthread_mutex_lock(shm_mutex_ptr);
 
-    // Get data
-    pybind11::bytes data = get_shm_data();
+    // Get data; the mutex is released also when the read fails
+    pybind11::bytes data;
+    try
+    {
+        data = get_shm_data();
+    }
+    catch (...)
+    {
+        pthread_mutex_unlock(shm_mutex_ptr);
+        munmap(shm_mutex_ptr, sizeof(pthread_mutex_t));
+        close(shm_mutex_fd);
+        throw;
+    }
 
     // Unlock the mutex
     pthread_mutex_unlock(shm_mutex_ptr);
@@ -319,4 +455,28 @@ pybind11::bytes SharedMemoryDataInfo::get_shm_data_with_mutex() const
     close(shm_mutex_fd);
 
     return data;
+}
+
+void append_length_prefixed(std::string &out, const std::string &field)
+{
+    out.append(uint32_to_bytes(static_cast<uint32_t>(field.size())));
+    out.append(field);
+}
+
+std::string read_length_prefixed(const std::string &in, size_t &pos)
+{
+    if (pos + sizeof(uint32_t) > in.size())
+    {
+        throw std::invalid_argument("Length-prefixed field truncated at byte " + std::to_string(pos));
+    }
+    uint32_t length = bytes_to_uint32(in.substr(pos, sizeof(uint32_t)));
+    pos += sizeof(uint32_t);
+    if (pos + length > in.size())
+    {
+        throw std::invalid_argument("Length-prefixed field of " + std::to_string(length) + " bytes truncated at byte " +
+                                    std::to_string(pos));
+    }
+    std::string field = in.substr(pos, length);
+    pos += length;
+    return field;
 }
