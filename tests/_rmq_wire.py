@@ -17,6 +17,11 @@ ERROR = -1
 SHM_MAGIC = b"\x0d\x0a\x0d\x0b"  # SharedMemoryDataInfo::HEADER
 
 
+def check_shared_memory_request(descriptor: bytes, expected_nonce: bytes) -> bytes:
+    """CHECK_SHARED_MEMORY payload: a length-prefixed descriptor and expected probe nonce."""
+    return struct.pack("<I", len(descriptor)) + descriptor + struct.pack("<I", len(expected_nonce)) + expected_nonce
+
+
 def frame(topic: str, cmd: int, payload: bytes, timestamp: float | None = None) -> bytes:
     """Serialize one RMQ frame. Timestamps must differ between REQUEST_WITH_DATA frames on the
     same topic, or the server answers the second from its deduplication cache."""

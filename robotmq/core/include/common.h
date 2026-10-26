@@ -34,7 +34,7 @@ std::string bytes_to_hex(const std::string &bytes);
 std::string uint64_to_bytes(uint64_t value);
 uint64_t bytes_to_uint64(const std::string &bytes);
 
-// Length-prefixed (uint32) byte strings, for replies that carry several fields.
+// Length-prefixed (uint32) byte strings, for messages that carry several fields.
 void append_length_prefixed(std::string &out, const std::string &field);
 // Reads the field at `pos` and advances `pos`; throws std::invalid_argument when `in` is too short.
 std::string read_length_prefixed(const std::string &in, size_t &pos);
@@ -42,8 +42,8 @@ std::string read_length_prefixed(const std::string &in, size_t &pos);
 std::string get_user_name();
 std::string get_pid();
 
-// The probe segment of RMQClient::check_shared_memory: its name ends in SHM_PROBE_SUFFIX and the server reads back at
-// most SHM_MAX_PROBE_BYTES of it, so the reply can never echo another segment's contents.
+// The probe segment of RMQClient::check_shared_memory: its name ends in SHM_PROBE_SUFFIX and its actual size is at
+// most SHM_MAX_PROBE_BYTES. The server compares its contents locally and only echoes a verified client nonce.
 constexpr const char *SHM_PROBE_SUFFIX = "_probe";
 constexpr uint64_t SHM_MAX_PROBE_BYTES = 64;
 
@@ -72,8 +72,9 @@ class SharedMemoryDataInfo
     // Whether this process can open the segment read-only and it holds the bytes the descriptor names. Uses no
     // Python objects, so it is safe on the server's background thread (no GIL). The reason goes to `error`.
     bool check_readable(std::string &error) const;
-    // Copies the described bytes into `out`; same contract as check_readable.
-    bool read_bytes(std::string &out, std::string &error) const;
+    // Copies the described bytes into `out`, leaving it empty on failure. An optional nonzero size limit is checked
+    // against the actual segment using the same open fd as the read, so replacing the name cannot bypass it.
+    bool read_bytes(std::string &out, std::string &error, uint64_t max_segment_size_bytes = 0) const;
 
   private:
     // The descriptor's own consistency: a non-empty segment, a start inside it or equal to its size (an entry that

@@ -680,13 +680,14 @@ void RMQServer::reply_error_(const std::string &topic, const std::string &error_
 
 void RMQServer::check_shared_memory_(RMQMessage &message)
 {
+    // Request payload: two uint32-length-prefixed strings, the descriptor and the client's expected nonce.
     // Reply payload: int32 status (0 the server read the probe, 1 not a shared memory topic, 2 the server cannot
     // read the probe), uint64 st_dev, uint64 st_ino and uint64 size of the topic's segment, then three
-    // length-prefixed strings: the probe bytes as read, the segment name, the reason for status 2.
+    // length-prefixed strings: the verified client nonce, the segment name, the reason for status 2.
     const std::string probe_suffix(SHM_PROBE_SUFFIX);
     int32_t status = 0;
     uint64_t device = 0, inode = 0, size = 0;
-    std::string probe_bytes, segment_name, error;
+    std::string probe_echo, segment_name, error;
     {
         std::lock_guard<std::mutex> lock(data_topic_mutex_);
         auto it = data_topics_.find(message.topic()); // process_request_ answered an unknown topic already
@@ -704,33 +705,77 @@ void RMQServer::check_shared_memory_(RMQMessage &message)
     }
     if (status == 0)
     {
-        std::string descriptor = message.data_str();
-        if (!SharedMemoryDataInfo::is_shm_data_info(descriptor))
+        try
         {
-            status = 2;
-            error = "the request names no shared memory segment";
-        }
-        else
-        {
+            const std::string request = message.data_str();
+            size_t pos = 0;
+            const std::string descriptor = read_length_prefixed(request, pos);
+            const std::string expected_nonce = read_length_prefixed(request, pos);
+            if (pos != request.size())
+            {
+                throw std::invalid_argument("the probe request has trailing bytes");
+            }
+            if (expected_nonce.empty() || expected_nonce.size() > SHM_MAX_PROBE_BYTES)
+            {
+                throw std::invalid_argument("the probe nonce must contain between 1 and " +
+                                            std::to_string(SHM_MAX_PROBE_BYTES) + " bytes");
+            }
+            if (!SharedMemoryDataInfo::is_shm_data_info(descriptor))
+            {
+                throw std::invalid_argument("the request names no shared memory segment");
+            }
             SharedMemoryDataInfo probe(descriptor);
             const std::string probe_name = probe.shm_name();
-            // Only a small probe segment is read back: the reply must never echo another segment's contents.
             if (probe.shm_size_bytes() > SHM_MAX_PROBE_BYTES || probe_name.size() < probe_suffix.size() ||
                 probe_name.compare(probe_name.size() - probe_suffix.size(), probe_suffix.size(), probe_suffix) != 0)
             {
-                status = 2;
-                error = "/dev/shm/" + probe_name + " is not a probe segment (a name ending in `" + probe_suffix +
-                        "`, at most " + std::to_string(SHM_MAX_PROBE_BYTES) + " bytes)";
+                throw std::invalid_argument("/dev/shm/" + probe_name + " is not a probe segment (a name ending in `" +
+                                            probe_suffix + "`, at most " + std::to_string(SHM_MAX_PROBE_BYTES) + " bytes)");
             }
-            else if (!probe.read_bytes(probe_bytes, error))
+            {
+                std::lock_guard<std::mutex> lock(data_topic_mutex_);
+                for (const auto &entry : data_topics_)
+                {
+                    const std::string own_name = entry.second.shm_name();
+                    if (!own_name.empty() && (probe_name == own_name || probe_name == own_name + "_mutex"))
+                    {
+                        throw std::invalid_argument("/dev/shm/" + probe_name + " belongs to a server topic, not a probe");
+                    }
+                }
+            }
+            if (probe.data_size_bytes() != expected_nonce.size())
+            {
+                throw std::invalid_argument("the probe data size does not match the supplied nonce length");
+            }
+
+            // Keep read bytes local, including a partial read followed by failure. Only the client-provided nonce
+            // may enter the reply, and only after a complete read matches it. The actual file size is checked on
+            // the same fd used for reading, rather than trusting the descriptor or reopening a checked name.
+            std::string probe_contents;
+            if (!probe.read_bytes(probe_contents, error, SHM_MAX_PROBE_BYTES))
             {
                 status = 2;
                 error = "/dev/shm/" + probe_name + ": " + error;
             }
+            else if (probe_contents != expected_nonce)
+            {
+                status = 2;
+                error = "the probe contents do not match the supplied nonce";
+            }
+            else
+            {
+                probe_echo = expected_nonce;
+            }
+        }
+        catch (const std::exception &e)
+        {
+            status = 2;
+            probe_echo.clear();
+            error = e.what();
         }
     }
     std::string payload = int32_to_bytes(status) + uint64_to_bytes(device) + uint64_to_bytes(inode) + uint64_to_bytes(size);
-    append_length_prefixed(payload, probe_bytes);
+    append_length_prefixed(payload, probe_echo);
     append_length_prefixed(payload, segment_name);
     append_length_prefixed(payload, error);
     RMQMessage reply(message.topic(), CmdType::CHECK_SHARED_MEMORY, get_timestamp(), payload);

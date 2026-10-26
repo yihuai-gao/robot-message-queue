@@ -363,6 +363,10 @@ client.check_shared_memory(topic: str, timeout_s: float = 1.0) -> tuple[bool, st
 ```
 Checks in one round trip whether shared memory works between this client and the server for `topic`. Returns `(True, "")` when it does, otherwise `(False, reason)`. It never raises for an unreachable server, a missing or plain topic, or an older server. It fails on another host, in another IPC namespace (a container without `--ipc=host`) and under a user who may not open the segments. The check queues behind an in-flight request on the server, so use a `timeout_s` above the slowest request handler.
 
+`timeout_s` must be finite and between `0` and `2147483.647` seconds (`INT_MAX / 1000`, about 24.8 days), inclusive. Invalid values return `(False, reason)` before a probe is created. The check also refuses a server mutex smaller than the required native mutex size.
+
+The server verifies the probe against a nonce supplied by the client. Its reply echoes that nonce only after a complete match; failed checks never return bytes read from shared memory.
+
 #### Other
 
 ```python

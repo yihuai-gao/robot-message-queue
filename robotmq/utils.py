@@ -388,7 +388,7 @@ _TORCH_DTYPES: "dict[str, Any] | None" = None
 
 
 def _torch_dtypes() -> dict:
-    """`{"float32": torch.float32, ...}`, built once from `vars(torch)`.
+    """Non-quantized dtypes, built once from `vars(torch)`.
 
     This is the only place the reader imports torch, and a dtype name is
     looked up in this static table, never with `getattr(torch, name)`, which
@@ -402,15 +402,27 @@ def _torch_dtypes() -> dict:
             raise UnsafePayloadError(
                 "safe_deserialize: payload carries a torch tensor but torch is not installed"
             ) from exc
-        _TORCH_DTYPES = {k: v for k, v in vars(torch).items() if isinstance(v, torch.dtype)}
+        namespace = vars(torch)
+        # The wire has no quantization scheme, scale or zero-point. Reinterpreting
+        # raw bytes as these dtypes can create tensors without a valid quantizer.
+        # Filter by dtype value so any aliases are excluded as well.
+        quantized = {
+            namespace[name]
+            for name in ("qint8", "quint8", "qint32", "quint4x2", "quint2x4")
+            if name in namespace
+        }
+        _TORCH_DTYPES = {
+            k: v for k, v in namespace.items()
+            if isinstance(v, torch.dtype) and v not in quantized
+        }
     return _TORCH_DTYPES
 
 
 def _tensor_from_wire(wire: dict, budget: list) -> Any:
     """Rebuild a CPU tensor from a tagged dict, validating every field first.
 
-    Raises UnsafePayloadError when the dtype name is not a torch dtype, the
-    shape is not a tuple / list of at most 64 non-negative ints below 2**63,
+    Raises UnsafePayloadError when the dtype is unknown or quantized, the shape
+    is not a tuple / list of at most 64 non-negative ints below 2**63,
     the data is not bytes, or the byte count does not match shape x dtype.
     """
     dtypes = _torch_dtypes()
@@ -582,9 +594,10 @@ def safe_deserialize(data: bytes) -> Any:
     large inputs or pathological hash collisions still require application
     limits; process-wide resource exhaustion may raise MemoryError.
     Torch is imported when the tag marker and keys match, before validating
-    its fields. The dtype name is checked against a static table (never
-    `getattr(torch, name)`); if torch is not installed such a payload raises
-    `UnsafePayloadError`.
+    its fields. The dtype name is checked against a static table of non-quantized
+    dtypes (never `getattr(torch, name)`); quantized dtypes are refused because
+    the wire carries no quantization metadata. If torch is not installed such
+    a payload raises `UnsafePayloadError`.
     Empty bytes return None with a warning, matching `deserialize`.
     """
     if len(data) == 0:

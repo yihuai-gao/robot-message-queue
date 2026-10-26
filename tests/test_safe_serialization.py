@@ -906,6 +906,27 @@ class TestTorchForgedTags:
         with pytest.raises(UnsafePayloadError):
             safe_deserialize(pickle.dumps(forged))
 
+    @pytest.mark.parametrize("dtype_name", ["qint8", "quint8", "qint32", "quint4x2", "quint2x4"])
+    @pytest.mark.parametrize("count", [0, 1], ids=["empty", "nonempty"])
+    def test_quantized_dtype_is_refused_before_tensor_construction(self, dtype_name, count, monkeypatch):
+        dtype = vars(torch).get(dtype_name)
+        if dtype is None:
+            pytest.skip(f"torch does not provide {dtype_name}")
+        forged = {
+            TENSOR_TAG: 1,
+            "dtype": dtype_name,
+            "shape": (count,),
+            "data": bytes(count * dtype.itemsize),
+        }
+
+        def forbidden(*args, **kwargs):
+            pytest.fail("quantized payload reached tensor construction")
+
+        monkeypatch.setattr(torch, "empty", forbidden)
+        monkeypatch.setattr(torch, "frombuffer", forbidden)
+        with pytest.raises(UnsafePayloadError, match="dtype"):
+            safe_deserialize(pickle.dumps(forged))
+
     @pytest.mark.parametrize("field", ["dtype", "shape"])
     def test_invalid_field_error_does_not_expand_shared_containers(self, field):
         shared = [0]

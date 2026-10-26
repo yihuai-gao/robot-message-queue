@@ -43,6 +43,7 @@ from tests._rmq_wire import (
     ERROR,
     REQUEST_WITH_DATA,
     SHM_MAGIC,
+    check_shared_memory_request,
     frame,
     parse_frame,
     send_raw_frame,
@@ -132,6 +133,14 @@ def _parse_check_reply(payload: bytes) -> tuple[int, int, int, int, bytes, bytes
     return status, st_dev, st_ino, segment_size, strings[0], strings[1], strings[2]
 
 
+def _send_check_request(endpoint: str, payload: bytes):
+    raw = send_raw_frame(endpoint, frame("shm", CHECK_SHARED_MEMORY, payload), timeout_ms=3000)
+    assert raw is not None, "no reply to a raw CHECK_SHARED_MEMORY frame"
+    _topic, cmd, _ts, reply_payload = parse_frame(raw)
+    assert cmd == CHECK_SHARED_MEMORY, f"expected a CHECK_SHARED_MEMORY reply, got cmd {cmd}: {reply_payload[:80]!r}"
+    return _parse_check_reply(reply_payload)
+
+
 # --------------------------------------------------------------------------------------
 # /dev/shm helpers
 # --------------------------------------------------------------------------------------
@@ -165,6 +174,14 @@ def _request_segments(client_name: str, topic: str) -> list[str]:
 def _assert_no_probe_segment(client_name: str, topic: str) -> None:
     leftover = glob.glob(f"/dev/shm/rmq_*_{os.getpid()}_{client_name}_{topic}_*_probe")
     assert leftover == [], f"check_shared_memory left its probe segment behind: {leftover}"
+
+
+def _check_invalid_timeouts(endpoint, client_name, timeouts, result_sender):
+    """Run potentially unbounded native polls in a child that the test can terminate."""
+    client = robotmq.RMQClient(client_name, endpoint, robotmq.RMQLogLevel.ERROR)
+    results = [client.check_shared_memory("shm", timeout_s=value) for value in timeouts]
+    result_sender.send(results)
+    result_sender.close()
 
 
 # --------------------------------------------------------------------------------------
@@ -544,12 +561,36 @@ class TestCheckSharedMemory:
         _assert_no_probe_segment(check_setup.client_name, "shm")
         assert check_setup.client.get_topic_status("shm", 3.0) == 0
 
+    @pytest.mark.parametrize("truncated_size", [0, 1])
+    def test_truncated_server_mutex_is_reported(self, check_setup, truncated_size):
+        _data_segment, mutex_segment = _server_segments(check_setup.server_name, "shm")
+        # CHECK_SHARED_MEMORY only reads the server's metadata, without locking this mutex. Restore its exact
+        # initialized contents before any data operation or fixture teardown can touch the existing mapping.
+        with open(mutex_segment, "r+b", buffering=0) as mutex_file:
+            original = mutex_file.read()
+            assert truncated_size < len(original)
+            try:
+                mutex_file.truncate(truncated_size)
+                ok, reason = check_setup.client.check_shared_memory("shm", timeout_s=1.0)
+            finally:
+                mutex_file.truncate(len(original))
+                mutex_file.seek(0)
+                assert mutex_file.write(original) == len(original)
+
+        assert ok is False
+        assert "shared memory mutex" in reason
+        assert f"holds {truncated_size} bytes, fewer than the required" in reason
+        _assert_no_probe_segment(check_setup.client_name, "shm")
+        assert check_setup.client.check_shared_memory("shm", timeout_s=1.0) == (True, "")
+
     def test_raw_probe_naming_missing_segment_reports_status_2(self, check_setup):
         # A probe segment is named `<...>_probe` and holds a few bytes; this one does not exist.
         missing = f"{_unique('rmq_test_missing')}_probe"
         assert not os.path.exists(f"/dev/shm/{missing}")
         raw = send_raw_frame(
-            check_setup.endpoint, frame("shm", CHECK_SHARED_MEMORY, _descriptor(missing, 32, 0, 32)), timeout_ms=3000
+            check_setup.endpoint,
+            frame("shm", CHECK_SHARED_MEMORY, check_shared_memory_request(_descriptor(missing, 32, 0, 32), b"x" * 32)),
+            timeout_ms=3000,
         )
         assert raw is not None, "no reply to a raw CHECK_SHARED_MEMORY frame"
         _topic, cmd, _ts, payload = parse_frame(raw)
@@ -568,7 +609,11 @@ class TestCheckSharedMemory:
         # segment (not a `_probe` name, far larger than a probe) is refused with status 2 and no bytes.
         data_segment, _mutex_segment = _server_segments(check_setup.server_name, "shm")
         descriptor = _descriptor(os.path.basename(data_segment), int(0.001 * 1024**3), 0, 64)
-        raw = send_raw_frame(check_setup.endpoint, frame("shm", CHECK_SHARED_MEMORY, descriptor), timeout_ms=3000)
+        raw = send_raw_frame(
+            check_setup.endpoint,
+            frame("shm", CHECK_SHARED_MEMORY, check_shared_memory_request(descriptor, b"x" * 64)),
+            timeout_ms=3000,
+        )
         assert raw is not None, "no reply to a raw CHECK_SHARED_MEMORY frame"
         _topic, cmd, _ts, payload = parse_frame(raw)
         assert cmd == CHECK_SHARED_MEMORY, f"expected a CHECK_SHARED_MEMORY reply, got cmd {cmd}: {payload[:80]!r}"
@@ -584,7 +629,9 @@ class TestCheckSharedMemory:
         segment = shared_memory.SharedMemory(create=True, size=65, name=name)
         try:
             raw = send_raw_frame(
-                check_setup.endpoint, frame("shm", CHECK_SHARED_MEMORY, _descriptor(name, 65, 0, 65)), timeout_ms=3000
+                check_setup.endpoint,
+                frame("shm", CHECK_SHARED_MEMORY, check_shared_memory_request(_descriptor(name, 65, 0, 65), b"x" * 64)),
+                timeout_ms=3000,
             )
             assert raw is not None, "no reply to a raw CHECK_SHARED_MEMORY frame"
             _topic, cmd, _ts, payload = parse_frame(raw)
@@ -597,6 +644,173 @@ class TestCheckSharedMemory:
             segment.close()
             segment.unlink()
         assert check_setup.client.get_topic_status("shm", 3.0) == 0
+
+    def test_raw_probe_actual_size_cannot_exceed_advertised_limit(self, check_setup):
+        name = f"{_unique('rmq_test_hidden_size')}_probe"
+        segment = shared_memory.SharedMemory(create=True, size=65, name=name)
+        nonce = b"x" * 64
+        try:
+            segment.buf[:64] = nonce
+            request = check_shared_memory_request(_descriptor(name, 64, 0, 64), nonce)
+            status, _dev, _ino, _size, echo, _name, error = _send_check_request(check_setup.endpoint, request)
+            assert status == 2
+            assert b"holds 65 bytes, more than the allowed 64" in error
+            assert echo == b""
+        finally:
+            segment.close()
+            segment.unlink()
+
+    def test_raw_probe_cannot_read_a_topic_named_probe(self, check_setup):
+        # The protected segment belongs to a different topic than the CHECK_SHARED_MEMORY request. Even a small
+        # topic whose name has the probe suffix must not be treated as a client's diagnostic probe.
+        check_setup.server.add_shared_memory_topic("probe", 10.0, 64 / 1024**3)
+        nonce = b"private topic payload".ljust(64, b"!")
+        check_setup.server.put_data("probe", nonce)
+        data_segment, mutex_segment = _server_segments(check_setup.server_name, "probe")
+        request = check_shared_memory_request(_descriptor(os.path.basename(data_segment), 64, 0, 64), nonce)
+        status, _dev, _ino, _size, echo, _name, error = _send_check_request(check_setup.endpoint, request)
+        assert status == 2
+        assert b"belongs to a server topic" in error
+        assert echo == b""
+
+        # Mutex names are also refused, before mapping or reading their contents.
+        request = check_shared_memory_request(_descriptor(os.path.basename(mutex_segment), 1, 0, 1), b"x")
+        status, _dev, _ino, _size, echo, _name, _error = _send_check_request(check_setup.endpoint, request)
+        assert status == 2 and echo == b""
+        assert check_setup.server.peek_data("probe", 0)[0] == [nonce]
+
+    @pytest.mark.parametrize("matches", [True, False])
+    def test_raw_probe_echo_requires_a_matching_nonce(self, check_setup, matches):
+        name = f"{_unique('rmq_test_nonce')}_probe"
+        segment = shared_memory.SharedMemory(create=True, size=64, name=name)
+        contents = bytes(range(64))
+        try:
+            segment.buf[:] = contents
+            # This descriptor wraps around the ring, exercising both reads before the comparison.
+            nonce = contents[48:] + contents[:16] if matches else b"x" * 32
+            request = check_shared_memory_request(_descriptor(name, 64, 48, 32), nonce)
+            status, _dev, _ino, _size, echo, _name, error = _send_check_request(check_setup.endpoint, request)
+            if matches:
+                assert status == 0 and echo == nonce and error == b""
+            else:
+                assert status == 2 and echo == b""
+                assert b"do not match the supplied nonce" in error
+        finally:
+            segment.close()
+            segment.unlink()
+
+    @pytest.mark.parametrize(
+        "malformation",
+        ["empty_nonce", "long_nonce", "wrong_length", "truncated", "trailing", "bare_descriptor", "out_of_bounds"],
+    )
+    def test_raw_probe_invalid_request_returns_no_echo(self, check_setup, malformation):
+        name = f"{_unique('rmq_test_bad_probe')}_probe"
+        segment = shared_memory.SharedMemory(create=True, size=16, name=name)
+        try:
+            nonce = b"x" * 16
+            segment.buf[:] = nonce
+            descriptor = _descriptor(name, 16, 0, 16)
+            if malformation == "out_of_bounds":
+                descriptor = _descriptor(name, 16, 17, 16)
+            if malformation == "empty_nonce":
+                nonce = b""
+            elif malformation == "long_nonce":
+                nonce = b"x" * 65
+            elif malformation == "wrong_length":
+                nonce = b"x" * 15
+            request = check_shared_memory_request(descriptor, nonce)
+            if malformation == "truncated":
+                request = request[:-1]
+            elif malformation == "trailing":
+                request += b"extra"
+            elif malformation == "bare_descriptor":
+                request = descriptor
+            status, _dev, _ino, _size, echo, _name, error = _send_check_request(check_setup.endpoint, request)
+            assert status == 2 and echo == b"" and error
+        finally:
+            segment.close()
+            segment.unlink()
+        assert check_setup.client.check_shared_memory("shm", timeout_s=1.0) == (True, "")
+
+    def test_raw_probe_partial_failed_read_returns_no_echo(self, check_setup):
+        name = f"{_unique('rmq_test_partial_probe')}_probe"
+        segment = shared_memory.SharedMemory(create=True, size=64, name=name)
+        nonce = b"private-prefix!!" + b"\0" * 48
+        stop = threading.Event()
+        fd = os.open(f"/dev/shm/{name}", os.O_RDWR)
+
+        def flap_size():
+            while not stop.is_set():
+                os.ftruncate(fd, 16)
+                os.ftruncate(fd, 64)
+
+        flapper = threading.Thread(target=flap_size, daemon=True)
+        try:
+            segment.buf[:] = nonce
+            request = check_shared_memory_request(_descriptor(name, 64, 0, 64), nonce)
+            flapper.start()
+            partial_failure_seen = False
+            # A reported read failure (rather than fstat rejection) necessarily follows a partial read: the file
+            # never shrinks below 16 bytes, so the first pread at offset zero cannot return EOF. The bounded race
+            # exercises the same failure path as a client shrinking its probe between fstat and pread.
+            for _ in range(2000):
+                status, _dev, _ino, _size, echo, _name, error = _send_check_request(check_setup.endpoint, request)
+                if status == 0:
+                    assert echo == nonce
+                else:
+                    assert status == 2 and echo == b""
+                    if b"segment shrank while it was read" in error:
+                        partial_failure_seen = True
+                        break
+            assert partial_failure_seen, "did not exercise a partial probe read before the bounded race ended"
+        finally:
+            stop.set()
+            if flapper.ident is not None:
+                flapper.join(timeout=5.0)
+            os.close(fd)
+            segment.close()
+            segment.unlink()
+
+    def test_invalid_timeouts_are_refused_without_waiting(self):
+        endpoint = f"ipc:///tmp/rmq_test_bad_timeout_{os.getpid()}_{uuid.uuid4().hex[:8]}"
+        client_name = _unique("shmcheck_bad_timeout")
+        cases = [
+            (-1.0, "timeout_s must be non-negative"),
+            (float("-inf"), "timeout_s must be non-negative"),
+            (float("nan"), "timeout_s must be finite"),
+            (float("inf"), "timeout_s must be finite"),
+            ((2**31) / 1000.0, "timeout_s must be finite"),
+            (1e30, "timeout_s must be finite"),
+        ]
+        receiver, sender = SPAWN.Pipe(duplex=False)
+        process = SPAWN.Process(
+            target=_check_invalid_timeouts,
+            args=(endpoint, client_name, [value for value, _reason in cases], sender),
+        )
+        process.start()
+        sender.close()
+        probe_pattern = f"/dev/shm/rmq_*_{process.pid}_{client_name}_shm_*_probe"
+        try:
+            process.join(timeout=15.0)
+            assert not process.is_alive(), "invalid timeout waited indefinitely for an absent server"
+            assert process.exitcode == 0, f"timeout-check subprocess exited with {process.exitcode}"
+            assert receiver.poll(1.0), "timeout-check subprocess returned no results"
+            results = receiver.recv()
+            assert len(results) == len(cases)
+            for (value, prefix), (ok, reason) in zip(cases, results):
+                assert ok is False and reason.startswith(prefix), (value, ok, reason)
+            assert glob.glob(probe_pattern) == [], "invalid timeout left a probe segment behind"
+        finally:
+            if process.is_alive():
+                process.terminate()
+                process.join(timeout=5.0)
+                if process.is_alive():
+                    process.kill()
+                    process.join(timeout=5.0)
+            receiver.close()
+            # A regressed child can be killed while holding a probe; remove only this test child's objects.
+            for path in glob.glob(probe_pattern):
+                os.unlink(path)
 
     def test_no_server_returns_false_within_timeout(self):
         endpoint = f"ipc:///tmp/rmq_test_no_server_{os.getpid()}_{uuid.uuid4().hex[:8]}"

@@ -171,10 +171,12 @@ class RMQClient:
         """Whether shared memory works between this client and the server for ``topic``, before any request.
 
         One round trip, answered by the server's background thread (no handler code of the server runs for it): the
-        client writes a random probe segment that the server must read back, then opens the topic's data segment
-        (read-only) and checks it is the server's file, and opens and maps its mutex (read-write). It fails on
-        another host, in another IPC namespace (a container without ``--ipc=host``) and under a user who may not
-        open the segments. The background thread serves one request at a time and, inside an in-flight
+        client writes a random probe segment that the server must verify against the supplied nonce, then opens
+        the topic's data segment (read-only) and checks it is the server's file, and checks the mutex size before
+        mapping it read-write. It fails on another host, in another IPC namespace (a container without
+        ``--ipc=host``), or under a user who may not open the segments. The server echoes only a verified client
+        nonce; failed checks return no shared-memory contents. The background thread serves one request at a time
+        and, inside an in-flight
         ``request_with_data``, blocks until the server's Python calls ``reply_request``, so this check waits behind
         the slowest handler: use a ``timeout_s`` above the slowest request handler's duration.
 
@@ -183,6 +185,7 @@ class RMQClient:
             missing or plain topic, or a server whose robotmq predates this call (the reason names each case). A
             reason starting ``"the exchange with the server failed"`` means a malformed reply or a socket error. A
             negative ``timeout_s`` is refused with ``(False, "timeout_s must be non-negative, ...")`` instead of
-            waiting forever.
+            waiting forever. Non-finite values and values above ``INT_MAX / 1000`` seconds (2147483.647 seconds
+            on supported platforms) are also refused with ``(False, reason)`` before creating a probe.
         """
         ...

@@ -276,7 +276,8 @@ namespace
 // A segment shrunk after this check still faults on a mapped read (SIGBUS), which is why every read of a segment
 // another process owns (read_bytes and get_shm_data) goes through SharedMemoryDataInfo::read_into_ and pread.
 // Returns the fd, or -1 with the reason in `error`.
-int open_shm_at_least(const std::string &shm_name, int flags, uint64_t min_size, std::string &error)
+int open_shm_at_least(const std::string &shm_name, int flags, uint64_t min_size, std::string &error,
+                      uint64_t max_size = 0)
 {
     int fd = shm_open(shm_name.c_str(), flags, 0);
     if (fd == -1)
@@ -295,6 +296,13 @@ int open_shm_at_least(const std::string &shm_name, int flags, uint64_t min_size,
     {
         error = "the segment holds " + std::to_string(shm_stat.st_size) + " bytes, fewer than the " +
                 std::to_string(min_size) + " bytes described";
+        close(fd);
+        return -1;
+    }
+    if (max_size != 0 && static_cast<uint64_t>(shm_stat.st_size) > max_size)
+    {
+        error = "the segment holds " + std::to_string(shm_stat.st_size) + " bytes, more than the allowed " +
+                std::to_string(max_size) + " bytes";
         close(fd);
         return -1;
     }
@@ -364,19 +372,30 @@ bool SharedMemoryDataInfo::check_readable(std::string &error) const
     return true;
 }
 
-bool SharedMemoryDataInfo::read_bytes(std::string &out, std::string &error) const
+bool SharedMemoryDataInfo::read_bytes(std::string &out, std::string &error, uint64_t max_segment_size_bytes) const
 {
+    out.clear();
     if (!in_bounds_(error))
     {
         return false;
     }
-    int fd = open_shm_at_least(shm_name_, O_RDONLY, shm_size_bytes_, error);
+    int fd = open_shm_at_least(shm_name_, O_RDONLY, shm_size_bytes_, error, max_segment_size_bytes);
     if (fd == -1)
     {
         return false;
     }
-    out.resize(data_size_bytes_);
-    bool complete = read_into_(fd, out.data(), error);
+    bool complete;
+    try
+    {
+        out.resize(data_size_bytes_);
+        complete = read_into_(fd, out.data(), error);
+    }
+    catch (...)
+    {
+        close(fd);
+        out.clear();
+        throw;
+    }
     close(fd);
     if (!complete)
     {

@@ -6,10 +6,21 @@ if (($# > 1)) || [[ ${1:-} != "" && ${1:-} != --check ]]; then
     exit 1
 fi
 root_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+if ! git -C "$root_dir" diff --quiet || ! git -C "$root_dir" diff --cached --quiet; then
+    echo "Commit tracked changes and rebuild release wheels before publishing." >&2
+    exit 1
+fi
 version=$(sed -n 's/^version = "\([^"]*\)"/\1/p' "$root_dir/pyproject.toml")
 release_dir="$root_dir/wheels/wheelhouse/$version"
 if [[ ! -f "$release_dir/SHA256SUMS" || ! -f "$release_dir/BUILD_INFO" ]]; then
     echo "No completed release build for $version. Run wheels/build_wheels.sh first." >&2
+    exit 1
+fi
+commit=$(git -C "$root_dir" rev-parse HEAD)
+build_commit=$(sed -n 's/^commit=//p' "$release_dir/BUILD_INFO")
+build_version=$(sed -n 's/^version=//p' "$release_dir/BUILD_INFO")
+if [[ "$build_commit" != "$commit" || "$build_version" != "$version" ]]; then
+    echo "Release build does not match the current commit and version. Run wheels/build_wheels.sh first." >&2
     exit 1
 fi
 cd "$release_dir"

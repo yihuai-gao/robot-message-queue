@@ -7,8 +7,10 @@
 
 #include "rmq_client.h"
 #include "common.h"
+#include <cmath>
 #include <cstring>
 #include <fcntl.h>
+#include <limits>
 #include <memory>
 #include <pthread.h>
 #include <random>
@@ -99,7 +101,7 @@ class OwnedSegment
 };
 
 constexpr size_t PROBE_BYTES = 16;
-static_assert(PROBE_BYTES <= SHM_MAX_PROBE_BYTES, "the server reads back at most SHM_MAX_PROBE_BYTES");
+static_assert(PROBE_BYTES <= SHM_MAX_PROBE_BYTES, "the server verifies at most SHM_MAX_PROBE_BYTES");
 
 // Thrown by RMQClient::exchange_ when the server did not reply in time, as opposed to a socket error or a malformed
 // reply. It stays a std::runtime_error so pybind11 keeps mapping it to a Python RuntimeError.
@@ -352,8 +354,18 @@ std::tuple<bool, std::string> RMQClient::check_shared_memory(const std::string &
         reason << "timeout_s must be non-negative, got " << timeout_s;
         return {false, reason.str()};
     }
+    // exchange_ polls in signed-int milliseconds; an out-of-range conversion can become a negative (infinite)
+    // timeout. Reject it before allocating a probe or sending anything.
+    constexpr double max_timeout_s = static_cast<double>(std::numeric_limits<int>::max()) / 1000.0;
+    if (!std::isfinite(timeout_s) || timeout_s > max_timeout_s)
+    {
+        std::ostringstream reason;
+        reason << "timeout_s must be finite and at most " << std::to_string(max_timeout_s) << " seconds, got "
+               << timeout_s;
+        return {false, reason.str()};
+    }
 
-    // 1. The server's direction: write a random probe and let the server read it back.
+    // 1. The server's direction: write a random probe and let the server verify its contents against our nonce.
     std::random_device random_device;
     std::string nonce(PROBE_BYTES, '\0');
     for (char &byte : nonce)
@@ -372,8 +384,10 @@ std::tuple<bool, std::string> RMQClient::check_shared_memory(const std::string &
     }
     // The generated name outlives the probe: the messages below still name it after probe.reset().
     const std::string probe_name = probe->name();
-    RMQMessage message(topic, CmdType::CHECK_SHARED_MEMORY, get_timestamp(),
-                       SharedMemoryDataInfo(probe_name, nonce.size(), 0, nonce.size()).serialize());
+    std::string probe_request;
+    append_length_prefixed(probe_request, SharedMemoryDataInfo(probe_name, nonce.size(), 0, nonce.size()).serialize());
+    append_length_prefixed(probe_request, nonce);
+    RMQMessage message(topic, CmdType::CHECK_SHARED_MEMORY, get_timestamp(), probe_request);
     std::unique_ptr<RMQMessage> reply;
     try
     {
@@ -485,6 +499,22 @@ std::tuple<bool, std::string> RMQClient::check_shared_memory(const std::string &
     {
         return {false, "this client cannot open the server's shared memory mutex /dev/shm/" + mutex_name + " (" +
                            strerror(errno) + ")"};
+    }
+    struct stat mutex_stat;
+    if (fstat(mutex_fd, &mutex_stat) == -1)
+    {
+        int mutex_stat_errno = errno;
+        close(mutex_fd);
+        return {false, "this client cannot stat the server's shared memory mutex /dev/shm/" + mutex_name + " (" +
+                           strerror(mutex_stat_errno) + ")"};
+    }
+    // mmap can succeed on an empty or truncated object; touching that mapping later can fault with SIGBUS.
+    if (mutex_stat.st_size < static_cast<off_t>(sizeof(pthread_mutex_t)))
+    {
+        close(mutex_fd);
+        return {false, "the server's shared memory mutex /dev/shm/" + mutex_name + " holds " +
+                           std::to_string(mutex_stat.st_size) + " bytes, fewer than the required " +
+                           std::to_string(sizeof(pthread_mutex_t))};
     }
     void *mutex_ptr = mmap(0, sizeof(pthread_mutex_t), PROT_READ | PROT_WRITE, MAP_SHARED, mutex_fd, 0);
     int map_errno = errno;
